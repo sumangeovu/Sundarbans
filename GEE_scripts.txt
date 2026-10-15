@@ -5767,3 +5767,826 @@ exportResult(validCount, 'PTC_Valid_Year_Count');
 
 print('PTC trend analysis prepared.');
 print('Open the Tasks tab and run the exports.');
+
+Data Statistical analysis
+# SUPPLEMENTARY R CODE
+# Statistical analysis for Figure 15, Figure 16 and Table 2
+# ==============================================================
+# --------------------------------------------------------------
+# 1. PACKAGES
+# --------------------------------------------------------------
+
+# Install packages if required:
+# install.packages(c("tidyverse", "GGally", "broom", "openxlsx"))
+library(tidyverse)
+library(GGally)
+library(broom)
+library(openxlsx)
+# --------------------------------------------------------------
+# 2. INPUT DATA
+# --------------------------------------------------------------
+# NOTE:
+# The following values were transcribed from the table supplied
+# in the manuscript.
+#
+# For the final reproducibility analysis, replace these values
+# with the ORIGINAL UNROUNDED values used to generate the figures.
+#
+# NA indicates missing observations.
+# ==============================================================
+data <- data.frame(
+  Year = c(
+    2001, 2002, 2003, 2004, 2005,
+    2006, 2007, 2008, 2009, 2010,
+    2011, 2012, 2013, 2014, 2015,
+    2016, 2017, 2018, 2019, 2020
+  ),
+  Min_Temp = c(
+    22.36, 22.42, 22.41, 24.14, 22.67,
+    22.76, 22.29, 22.30, 22.84, 22.97,
+    22.36, 21.79, 21.49, 21.67, 21.82,
+    22.36, 22.13, 21.61, 22.36, 22.29
+  ),
+  
+  Max_Temp = c(
+    31.05, 30.72, 30.63, 31.63, 30.80,
+    31.34, 30.96, 30.44, 31.76, 31.36,
+    30.70, 30.57, 30.25, 30.27, 30.32,
+    30.57, 30.41, 30.31, 30.86, 30.75
+  ),
+  
+  Precipitation = c(
+    1805.69, 2287.27, 2004.65, 2008.05, 1838.91,
+    2074.48, 2570.94, 2080.51, 1799.40, 1744.93,
+    1938.48, 1609.20, 1973.47, 1531.02, 2256.73,
+    1894.20, 2391.46, 1581.20, 1880.41, 2053.82
+  ),
+  
+  EVI = c(
+    0.26, 0.26, 0.26, 0.25, 0.27,
+    0.26, 0.26, 0.26, 0.25, 0.26,
+    0.25, 0.26, 0.26, 0.26, 0.27,
+    0.27, 0.28, 0.28, 0.28, 0.29
+  ),
+  
+  NDVI = c(
+    0.45, 0.45, 0.45, 0.45, 0.46,
+    0.45, 0.45, 0.43, 0.44, 0.44,
+    0.44, 0.44, 0.46, 0.46, 0.46,
+    0.47, 0.47, 0.48, 0.48, 0.49
+  ),
+  
+  PTC = c(
+    15.63, 18.99, 14.15, 20.23, 16.29,
+    17.35, 13.27, 17.44, 15.84, 18.87,
+    17.64, 15.80, 17.93, 18.05, 22.15,
+    21.90, 18.68, 19.25, 21.82, 22.44
+  ),
+  
+  LAI = c(
+    1.88, 1.82, 1.78, 1.74, 1.89,
+    1.84, 1.79, 1.71, 1.72, 1.76,
+    1.76, 1.79, 1.88, 1.93, 1.84,
+    1.87, 1.91, 1.91, 1.97, 2.02
+  ),
+  
+  ET = c(
+    1021.65, 1065.45, 1094.70, 1002.97, 1138.10,
+    999.77, 1062.40, 1003.56, 1024.79, 1058.78,
+    947.77, 1050.30, 985.13, 929.19, 980.69,
+    1045.93, 1106.03, 1075.56, 1058.95, 1191.04
+  ),
+  
+  LST = c(
+    26.95, 26.44, 26.36, 26.80, 26.70,
+    27.50, 26.83, 26.79, 27.49, 26.72,
+    26.97, 26.88, 27.08, 27.58, 27.04,
+    27.26, 26.52, 26.60, 26.79, 27.04
+  ),
+  
+  MNDWI = c(
+    -0.21, NA, -0.15, -0.18, -0.19,
+    -0.16, -0.17, -0.16, -0.12, -0.09,
+    -0.14, NA, -0.16, -0.20, -0.18,
+    -0.16, -0.18, -0.16, -0.17, -0.18
+  ),
+  
+  NDMI = c(
+    0.17, NA, 0.25, 0.75, 0.25,
+    0.24, 0.18, 0.27, 0.24, 0.22,
+    0.22, NA, 0.26, 0.26, 0.26,
+    0.29, 0.28, 0.28, 0.28, 0.26
+  ),
+  
+  MSAVI = c(
+    0.19, NA, 0.20, 0.23, 0.23,
+    0.21, 0.19, 0.22, 0.20, 0.16,
+    0.19, NA, 0.22, 0.24, 0.23,
+    0.23, 0.24, 0.24, 0.23, 0.23
+  )
+)
+
+
+# --------------------------------------------------------------
+# 3. CHECK DATA
+# --------------------------------------------------------------
+
+print(data)
+
+str(data)
+
+summary(data)
+
+# Number of observations
+nrow(data)
+
+# Missing values
+colSums(is.na(data))
+
+
+# --------------------------------------------------------------
+# 4. VARIABLE LABELS
+# --------------------------------------------------------------
+
+variables <- c(
+  "Min_Temp",
+  "Max_Temp",
+  "Precipitation",
+  "EVI",
+  "NDVI",
+  "PTC",
+  "LAI",
+  "ET",
+  "LST",
+  "MNDWI",
+  "NDMI",
+  "MSAVI"
+)
+
+
+# --------------------------------------------------------------
+# 5. SIGNIFICANCE FUNCTION
+# --------------------------------------------------------------
+
+get_significance <- function(p) {
+  
+  ifelse(
+    is.na(p),
+    NA,
+    ifelse(
+      p < 0.001,
+      "***",
+      ifelse(
+        p < 0.01,
+        "**",
+        ifelse(
+          p < 0.05,
+          "*",
+          "ns"
+        )
+      )
+    )
+  )
+}
+
+
+# --------------------------------------------------------------
+# 6. PEARSON CORRELATION ANALYSIS
+# --------------------------------------------------------------
+
+# Empty data frame for storing results
+
+correlation_results <- data.frame()
+
+for (i in 1:length(variables)) {
+  
+  for (j in 1:length(variables)) {
+    
+    x <- data[[variables[i]]]
+    y <- data[[variables[j]]]
+    
+    # Complete observations only
+    complete <- complete.cases(x, y)
+    
+    x_complete <- x[complete]
+    y_complete <- y[complete]
+    
+    # Pearson correlation test
+    test <- cor.test(
+      x_complete,
+      y_complete,
+      method = "pearson"
+    )
+    
+    result <- data.frame(
+      
+      Variable_1 = variables[i],
+      
+      Variable_2 = variables[j],
+      
+      N = length(x_complete),
+      
+      Pearson_r = unname(test$estimate),
+      
+      P_value = test$p.value,
+      
+      Confidence_Lower = test$conf.int[1],
+      
+      Confidence_Upper = test$conf.int[2],
+      
+      Significance = get_significance(test$p.value)
+      
+    )
+    
+    correlation_results <- rbind(
+      correlation_results,
+      result
+    )
+  }
+}
+
+
+# --------------------------------------------------------------
+# 7. DISPLAY UNROUNDED CORRELATION RESULTS
+# --------------------------------------------------------------
+
+options(digits = 15)
+
+print(correlation_results)
+
+
+# --------------------------------------------------------------
+# 8. SAVE UNROUNDED CORRELATION RESULTS
+# --------------------------------------------------------------
+
+write.csv(
+  correlation_results,
+  "Correlation_Unrounded_Results.csv",
+  row.names = FALSE
+)
+
+
+# --------------------------------------------------------------
+# 9. CORRELATION MATRIX
+# --------------------------------------------------------------
+
+correlation_matrix <- cor(
+  data[, variables],
+  use = "pairwise.complete.obs",
+  method = "pearson"
+)
+
+print(correlation_matrix)
+
+
+# Save correlation matrix
+write.csv(
+  correlation_matrix,
+  "Pearson_Correlation_Matrix_Unrounded.csv"
+)
+
+
+# --------------------------------------------------------------
+# 10. P-VALUE MATRIX
+# --------------------------------------------------------------
+
+p_matrix <- matrix(
+  NA,
+  nrow = length(variables),
+  ncol = length(variables)
+)
+
+rownames(p_matrix) <- variables
+colnames(p_matrix) <- variables
+
+
+for (i in 1:length(variables)) {
+  
+  for (j in 1:length(variables)) {
+    
+    x <- data[[variables[i]]]
+    y <- data[[variables[j]]]
+    
+    complete <- complete.cases(x, y)
+    
+    if (sum(complete) >= 3) {
+      
+      test <- cor.test(
+        x[complete],
+        y[complete],
+        method = "pearson"
+      )
+      
+      p_matrix[i, j] <- test$p.value
+    }
+  }
+}
+
+
+print(p_matrix)
+
+write.csv(
+  p_matrix,
+  "P_Value_Matrix_Unrounded.csv"
+)
+
+
+# ==============================================================
+# 11. FIGURE 15
+# CORRELATION / SCATTERPLOT MATRIX
+# ==============================================================
+
+cor_data <- data[, variables]
+
+
+figure15 <- ggpairs(
+  
+  cor_data,
+  
+  lower = list(
+    continuous = wrap(
+      "points",
+      alpha = 0.75,
+      size = 1.5
+    )
+  ),
+  
+  diag = list(
+    continuous = wrap(
+      "densityDiag",
+      alpha = 0.4
+    )
+  ),
+  
+  upper = list(
+    continuous = wrap(
+      "cor",
+      method = "pearson",
+      stars = TRUE,
+      digits = 2
+    )
+  )
+  
+) +
+  
+  theme_bw() +
+  
+  theme(
+    strip.text = element_text(
+      size = 10
+    ),
+    
+    axis.text = element_text(
+      size = 8
+    ),
+    
+    panel.grid = element_blank()
+  )
+
+
+print(figure15)
+
+
+# Save Figure 15
+ggsave(
+  "Figure_15_Correlation_Matrix.png",
+  figure15,
+  width = 14,
+  height = 12,
+  dpi = 600
+)
+
+
+# ==============================================================
+# 12. TREND ANALYSIS
+# FIGURE 16 / TABLE 2
+# ==============================================================
+
+# Linear regression:
+#
+# Variable = beta0 + beta1(Year)
+#
+# beta1 = annual slope
+# p-value = significance of temporal trend
+# R2 = coefficient of determination
+# ==============================================================
+
+
+trend_results <- data.frame()
+
+
+for (v in variables) {
+  
+  formula <- as.formula(
+    paste(v, "~ Year")
+  )
+  
+  model <- lm(
+    formula,
+    data = data
+  )
+  
+  model_summary <- summary(model)
+  
+  coefficient <- coef(model_summary)[
+    "Year",
+  ]
+  
+  result <- data.frame(
+    
+    Variable = v,
+    
+    N = nobs(model),
+    
+    Intercept = coef(model)[1],
+    
+    Slope = coef(model)[2],
+    
+    Standard_Error = coefficient["Std. Error"],
+    
+    t_value = coefficient["t value"],
+    
+    P_value = coefficient["Pr(>|t|)"],
+    
+    R_squared = model_summary$r.squared,
+    
+    Adjusted_R_squared = model_summary$adj.r.squared,
+    
+    Significance = get_significance(
+      coefficient["Pr(>|t|)"]
+    )
+    
+  )
+  
+  trend_results <- rbind(
+    trend_results,
+    result
+  )
+}
+
+
+# --------------------------------------------------------------
+# 13. UNROUNDED TREND RESULTS
+# --------------------------------------------------------------
+
+options(digits = 15)
+
+print(trend_results)
+
+
+# --------------------------------------------------------------
+# 14. SAVE UNROUNDED TREND RESULTS
+# --------------------------------------------------------------
+
+write.csv(
+  trend_results,
+  "Trend_Unrounded_Results.csv",
+  row.names = FALSE
+)
+
+
+# ==============================================================
+# 15. CORRELATION BETWEEN YEAR AND EACH VARIABLE
+# ==============================================================
+
+year_correlation_results <- data.frame()
+
+
+for (v in variables) {
+  
+  x <- data$Year
+  y <- data[[v]]
+  
+  complete <- complete.cases(x, y)
+  
+  test <- cor.test(
+    x[complete],
+    y[complete],
+    method = "pearson"
+  )
+  
+  result <- data.frame(
+    
+    Variable = v,
+    
+    N = sum(complete),
+    
+    Pearson_r = unname(test$estimate),
+    
+    P_value = test$p.value,
+    
+    Confidence_Lower = test$conf.int[1],
+    
+    Confidence_Upper = test$conf.int[2],
+    
+    Significance = get_significance(
+      test$p.value
+    )
+    
+  )
+  
+  year_correlation_results <- rbind(
+    year_correlation_results,
+    result
+  )
+}
+
+
+print(year_correlation_results)
+
+
+write.csv(
+  year_correlation_results,
+  "Year_Correlation_Unrounded_Results.csv",
+  row.names = FALSE
+)
+
+
+# ==============================================================
+# 16. LONG FORMAT FOR TREND PLOTS
+# ==============================================================
+
+trend_data <- data %>%
+  
+  pivot_longer(
+    
+    cols = all_of(variables),
+    
+    names_to = "Variable",
+    
+    values_to = "Value"
+    
+  )
+
+
+# ==============================================================
+# 17. FUNCTION FOR INDIVIDUAL TREND PLOTS
+# ==============================================================
+
+create_trend_plot <- function(variable_name) {
+  
+  plot_data <- data %>%
+    
+    select(
+      Year,
+      Value = all_of(variable_name)
+    ) %>%
+    
+    drop_na()
+  
+  
+  model <- lm(
+    Value ~ Year,
+    data = plot_data
+  )
+  
+  
+  slope <- coef(model)[2]
+  
+  p_value <- summary(model)$coefficients[
+    "Year",
+    "Pr(>|t|)"
+  ]
+  
+  r2 <- summary(model)$r.squared
+  
+  
+  ggplot(
+    plot_data,
+    aes(
+      x = Year,
+      y = Value
+    )
+  ) +
+    
+    geom_point(
+      size = 2
+    ) +
+    
+    geom_smooth(
+      method = "lm",
+      se = TRUE
+    ) +
+    
+    labs(
+      title = variable_name,
+      x = "Year",
+      y = variable_name
+    ) +
+    
+    annotate(
+      "text",
+      x = min(plot_data$Year),
+      y = max(plot_data$Value),
+      hjust = 0,
+      vjust = 1,
+      label = paste0(
+        "Slope = ",
+        formatC(
+          slope,
+          digits = 6,
+          format = "f"
+        ),
+        "\nR² = ",
+        formatC(
+          r2,
+          digits = 4,
+          format = "f"
+        ),
+        "\np = ",
+        format.pval(
+          p_value,
+          digits = 10,
+          eps = 1e-10
+        )
+      )
+    ) +
+    
+    theme_bw()
+  
+}
+
+
+# ==============================================================
+# 18. EXAMPLE FIGURE 16
+# ==============================================================
+# If Figure 16 contains temporal trends, this section can be
+# used to generate the individual trend figures.
+# ==============================================================
+
+
+# Example:
+figure16_MinTemp <- create_trend_plot(
+  "Min_Temp"
+)
+
+print(figure16_MinTemp)
+
+
+ggsave(
+  "Figure_16_Min_Temperature_Trend.png",
+  figure16_MinTemp,
+  width = 8,
+  height = 6,
+  dpi = 600
+)
+
+
+# ==============================================================
+# 19. GENERATE TREND PLOTS FOR ALL VARIABLES
+# ==============================================================
+
+for (v in variables) {
+  
+  p <- create_trend_plot(v)
+  
+  file_name <- paste0(
+    "Trend_",
+    v,
+    ".png"
+  )
+  
+  ggsave(
+    file_name,
+    p,
+    width = 8,
+    height = 6,
+    dpi = 600
+  )
+}
+
+
+# ==============================================================
+# 20. TABLE 2
+# COMBINED STATISTICAL RESULTS
+# ==============================================================
+
+Table_2 <- trend_results %>%
+  
+  left_join(
+    year_correlation_results %>%
+      select(
+        Variable,
+        Year_Pearson_r = Pearson_r,
+        Year_Correlation_P =
+          P_value
+      ),
+    by = "Variable"
+  )
+
+
+# Display Table 2
+print(Table_2)
+
+
+# Save Table 2 as CSV
+write.csv(
+  Table_2,
+  "Table_2_Unrounded_Statistical_Results.csv",
+  row.names = FALSE
+)
+
+
+# ==============================================================
+# 21. EXPORT EVERYTHING TO ONE EXCEL WORKBOOK
+# ==============================================================
+
+write.xlsx(
+  
+  list(
+    
+    Original_Data = data,
+    
+    Correlation_Results =
+      correlation_results,
+    
+    Correlation_Matrix =
+      correlation_matrix,
+    
+    P_Value_Matrix =
+      p_matrix,
+    
+    Year_Correlation =
+      year_correlation_results,
+    
+    Trend_Results =
+      trend_results,
+    
+    Table_2 =
+      Table_2
+    
+  ),
+  
+  file = "Supplementary_Unrounded_Statistical_Results.xlsx",
+  
+  overwrite = TRUE
+)
+
+
+# ==============================================================
+# 22. FINAL MESSAGE
+# ==============================================================
+
+cat(
+  "\n====================================================\n",
+  "STATISTICAL ANALYSIS COMPLETED\n",
+  "====================================================\n\n",
+  "Files generated:\n\n",
+  "1. Correlation_Unrounded_Results.csv\n",
+  "2. Pearson_Correlation_Matrix_Unrounded.csv\n",
+  "3. P_Value_Matrix_Unrounded.csv\n",
+  "4. Year_Correlation_Unrounded_Results.csv\n",
+  "5. Trend_Unrounded_Results.csv\n",
+  "6. Table_2_Unrounded_Statistical_Results.csv\n",
+  "7. Supplementary_Unrounded_Statistical_Results.xlsx\n",
+  "8. Figure_15_Correlation_Matrix.png\n",
+  "9. Individual trend figures\n\n",
+  "====================================================\n"
+)
+
+Table 3: Year-wise mean value of Min temperature, Max temperature, Precipitation,EVI,NDVI,PTC,LAI,ET,LST,MNDWI,NDMI,MSAVI
+Year	Min Temperature (°C)	Max Temperature (°C)	Precipitation (mm)	EVI	NDVI	PTC (%)	LAI	ET (mm)	LST (°C)	MNDWI	NDMI	MSAVI
+2001	22.36	31.05	1805.69	0.26	0.45	15.63	1.88	1021.65	26.95	-0.21	0.17	0.19
+2002	22.42	30.72	2287.27	0.26	0.45	18.99	1.82	1065.45	26.44	NA	NA	NA
+2003	22.41	30.63	2004.65	0.26	0.45	14.15	1.78	1094.70	26.36	-0.15	0.25	0.20
+2004	24.14	31.63	2008.05	0.25	0.45	20.23	1.74	1002.97	26.80	-0.18	0.75	0.23
+2005	22.67	30.80	1838.91	0.27	0.46	16.29	1.89	1138.10	26.70	-0.19	0.25	0.23
+2006	22.76	31.34	2074.48	0.26	0.45	17.35	1.84	999.77	27.50	-0.16	0.24	0.21
+2007	22.29	30.96	2570.94	0.26	0.45	13.27	1.79	1062.40	26.83	-0.17	0.18	0.19
+2008	22.60	30.44	2080.51	0.25	0.43	17.44	1.71	1003.56	26.79	-0.16	0.27	0.22
+2009	22.84	31.76	1799.40	0.25	0.44	15.84	1.72	1024.79	27.49	-0.12	0.24	0.20
+2010	22.97	31.36	1744.93	0.26	0.44	18.87	1.76	1058.78	26.72	-0.09	0.22	0.16
+2011	22.36	30.70	1938.48	0.25	0.44	17.64	1.76	947.77	26.97	-0.14	0.22	0.19
+2012	21.79	30.57	1609.20	0.26	0.44	15.80	1.79	1050.30	26.88	NA	NA	NA
+2013	21.49	30.25	1973.47	0.26	0.46	17.93	1.88	985.13	27.08	-0.16	0.26	0.22
+2014	21.67	30.27	1531.02	0.26	0.46	18.05	1.93	929.19	27.58	-0.20	0.26	0.24
+2015	21.82	30.32	2256.73	0.27	0.46	22.15	1.84	980.69	27.04	-0.18	0.26	0.23
+2016	22.36	30.57	1894.20	0.27	0.47	21.90	1.87	1045.93	27.26	-0.16	0.29	0.23
+2017	22.13	30.41	2391.46	0.28	0.47	18.68	1.91	1106.03	26.52	-0.18	0.28	0.24
+2018	21.61	30.31	1581.20	0.28	0.48	19.25	1.91	1075.56	26.60	-0.16	0.28	0.24
+2019	22.36	30.86	1880.41	0.28	0.48	21.82	1.97	1058.95	26.79	-0.17	0.28	0.23
+2020	22.29	30.75	2053.82	0.29	0.49	22.44	2.02	1191.04	27.04	-0.18	0.26	0.23
+
+SUPPLEMENTARY FILE S1
+
+Statistical Code and Unrounded Results
+for Figures 15, 16 and Table 3
+
+S1.1 Software and statistical methods
+
+S1.2 Input data
+
+S1.3 R code
+     S1.3.1 Data preparation
+     S1.3.2 Pearson correlation analysis
+     S1.3.3 Figure 15
+     S1.3.4 Linear trend analysis
+     S1.3.5 Figure 16
+     S1.3.6 Table 3
+
+S1.4 Unrounded statistical results
+     Table S1. Pearson correlation coefficients
+     Table S2. Unrounded p-values and significance
+     Table S3. Temporal trend statistics
+     Table S4. Statistics corresponding to Table 3
+
