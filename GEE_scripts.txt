@@ -1,0 +1,5813 @@
+# Sundarbans
+CODE for annual AET:
+// Load TerraClimate dataset
+var dataset = ee.ImageCollection('IDAHO_EPSCOR/TERRACLIMATE')
+                .filterBounds(roi); // Filter by ROI
+
+// Function to calculate annual sum of aet
+var calculateAnnualAETSum = function(year) {
+  var startDate = ee.Date.fromYMD(year, 1, 1);
+  var endDate = startDate.advance(1, 'year');
+  
+  // Filter dataset for the year and calculate the sum
+  var annualAETSum = dataset.filterDate(startDate, endDate)
+                            .select('aet') // Select aet band
+                            .sum() // Calculate annual sum
+                            .multiply(0.1) // Apply scaling factor
+                            .clip(roi) // Clip to ROI
+                            .set('year', year) // Add year metadata
+                            .set('system:time_start', startDate.millis()); // Set time metadata
+  
+  return annualAETSum;
+};
+
+// Generate a collection of annual aet sum from 2001 to 2020
+var years = ee.List.sequence(2001, 2020);
+var annualAETCollection = ee.ImageCollection.fromImages(
+  years.map(calculateAnnualAETSum)
+);
+
+// Visualization parameters
+var aetVis = {
+  min: 0,
+  max: 1000, // Adjust based on your region's data range
+  palette: [
+    'ffffff', 'c6e2ff', 'a5c9ff', '6499f3', '3a77c0', '1f57a5',
+    '003b5c', '001f3b'
+  ],
+};
+
+// Visualize a sample year (e.g., 2010)
+Map.centerObject(roi, 6);
+Map.addLayer(
+  annualAETCollection.filter(ee.Filter.eq('year', 2010)).first(),
+  aetVis,
+  'Annual AET Sum 2010'
+);
+
+// Export each year's annual aet sum as GeoTIFF to Google Drive
+years.getInfo().forEach(function(year) {
+  var image = annualAETCollection.filter(ee.Filter.eq('year', year)).first();
+  Export.image.toDrive({
+    image: image,
+    description: 'Annual_AET_Sum_' + year,
+    folder: 'AET_Annual_Sums',
+    scale: 4000, // Native resolution of TerraClimate
+    region: roi,
+    maxPixels: 1e13,
+    fileFormat: 'GeoTIFF'
+  });
+});
+Code for EVI
+// Load the MODIS NDVI dataset
+var dataset = ee.ImageCollection('MODIS/061/MOD13Q1')
+                  .select('EVI');
+
+// Function to calculate annual mean NDVI and apply scale factor
+var calculateAnnualNDVI = function(year) {
+  var startDate = ee.Date.fromYMD(year, 1, 1);
+  var endDate = startDate.advance(1, 'year');
+  
+  var annualNDVI = dataset.filterDate(startDate, endDate)
+                          .mean()
+                          .multiply(0.0001) // Apply scale factor
+                          .clip(roi) // Clip to ROI
+                          .set('year', year)
+                          .rename('EVI');
+  
+  return annualNDVI;
+};
+
+// List of years for analysis
+var years = ee.List.sequence(2001, 2020);
+
+// Generate annual NDVI images
+var annualNDVICollection = ee.ImageCollection.fromImages(
+  years.map(calculateAnnualNDVI)
+);
+
+// Visualization parameters
+var ndviVis = {
+  min: -0.2,
+  max: 1.0,
+  palette: [
+    'ffffff', 'ce7e45', 'df923d', 'f1b555', 'fcd163', '99b718', '74a901',
+    '66a000', '529400', '3e8601', '207401', '056201', '004c00', '023b01',
+    '012e01', '011d01', '011301'
+  ]
+};
+
+// Display the NDVI of one example year (e.g., 2020) on the map
+var exampleYear = annualNDVICollection.filter(ee.Filter.eq('year', 2020)).first();
+Map.centerObject(roi, 8); // Center map on ROI
+Map.addLayer(exampleYear, ndviVis, 'EVI (2020)');
+
+// Export each annual NDVI raster to Google Drive
+years.getInfo().forEach(function(year) {
+  var image = annualNDVICollection.filter(ee.Filter.eq('year', year)).first();
+  
+  Export.image.toDrive({
+    image: image,
+    description: 'Annual_EVI_' + year,
+    folder: 'EVI_Export',
+    fileNamePrefix: 'EVI_' + year,
+    scale: 250,
+    region: roi, // Export for ROI
+    crs: 'EPSG:4326',
+    maxPixels: 1e13
+  });
+});
+Code LAI
+// ============================================================
+// MODIS ANNUAL LAI: 2001–2020
+// Dataset: MODIS/061/MOD15A2H
+// Band: Lai_500m
+// Native Resolution: 500 m
+// Scale Factor: 0.1
+// ============================================================
+
+// 1. LOAD MODIS LAI DATASET
+var modisLAI = ee.ImageCollection("MODIS/061/MOD15A2H")
+  .select('Lai_500m')
+  .filterBounds(roi);
+
+// 2. DEFINE STUDY YEARS
+var years = ee.List.sequence(2001, 2020);
+
+// 3. VISUALIZATION PARAMETERS
+var laiVis = {
+  min: 0,
+  max: 6,
+  palette: [
+    'ffffff', 'ce7e45', 'df923d', 'f1b555',
+    'fcd163', '99b718', '74a901', '66a000',
+    '529400', '3e8601', '207401', '056201',
+    '004c00', '023b01', '012e01', '011d01',
+    '011301'
+  ]
+};
+
+// 4. FUNCTION TO CALCULATE ANNUAL MEAN LAI
+var calculateAnnualLAI = function(year) {
+  year = ee.Number(year);
+
+  var startDate = ee.Date.fromYMD(year, 1, 1);
+  var endDate = startDate.advance(1, 'year');
+
+  var annualLAI = modisLAI
+    .filterDate(startDate, endDate)
+    .mean()
+    .multiply(0.1) // LAI scale factor
+    .rename('LAI')
+    .clip(roi);
+
+  return annualLAI
+    .set('year', year)
+    .set('system:time_start', startDate.millis());
+};
+
+// 5. CREATE ANNUAL LAI IMAGE COLLECTION
+var annualLAICollection = ee.ImageCollection.fromImages(
+  years.map(calculateAnnualLAI)
+);
+
+print('Annual LAI Collection (2001–2020)', annualLAICollection);
+
+// 6. DISPLAY LAI FOR 2020
+var lai2020 = annualLAICollection
+  .filter(ee.Filter.eq('year', 2020))
+  .first();
+
+Map.centerObject(roi, 8);
+Map.addLayer(lai2020, laiVis, 'Annual Mean LAI 2020');
+
+// 7. EXPORT EACH YEAR'S LAI IMAGE TO GOOGLE DRIVE
+years.getInfo().forEach(function(year) {
+
+  var annualLAI = annualLAICollection
+    .filter(ee.Filter.eq('year', year))
+    .first();
+
+  Export.image.toDrive({
+    image: annualLAI,
+    description: 'Annual_LAI_' + year,
+    folder: 'LAI_Annual_2001_2020',
+    fileNamePrefix: 'Annual_LAI_' + year,
+    scale: 500,
+    region: roi,
+    crs: 'EPSG:32645',
+    maxPixels: 1e13
+  });
+
+});
+
+// 8. CALCULATE ANNUAL MEAN LAI FOR THE ROI
+var annualLAITable = ee.FeatureCollection(
+  annualLAICollection.map(function(image) {
+
+    var stats = image.reduceRegion({
+      reducer: ee.Reducer.mean(),
+      geometry: roi,
+      scale: 500,
+      maxPixels: 1e13,
+      tileScale: 4
+    });
+
+    return ee.Feature(null, {
+      year: image.get('year'),
+      mean_annual_LAI: stats.get('LAI')
+    });
+
+  })
+);
+
+// 9. EXPORT ANNUAL SUMMARY TABLE AS CSV
+Export.table.toDrive({
+  collection: annualLAITable,
+  description: 'Annual_LAI_Summary_2001_2020',
+  folder: 'LAI_Annual_2001_2020',
+  fileNamePrefix: 'Annual_LAI_Summary_2001_2020',
+  fileFormat: 'CSV'
+});
+Code for LST
+
+// Load the MODIS LST dataset
+var dataset = ee.ImageCollection('MODIS/061/MOD11A1')
+                .filterBounds(roi); // Filter by ROI
+
+// Function to calculate annual average LST in Celsius
+var calculateAnnualAverageLST = function(year) {
+  var startDate = ee.Date.fromYMD(year, 1, 1);
+  var endDate = startDate.advance(1, 'year');
+  
+  // Filter dataset for the year and apply scaling
+  var annualLST = dataset.filterDate(startDate, endDate)
+                         .select('LST_Day_1km')
+                         .map(function(image) {
+                           return image.multiply(0.02).subtract(273.15).set('system:time_start', image.get('system:time_start')); // Apply scaling factor and convert to Celsius
+                         })
+                         .mean() // Calculate annual average
+                         .set('year', year)
+                         .clip(roi); // Clip to the ROI
+  
+  return annualLST.set('system:time_start', startDate.millis());
+};
+
+// Generate annual average LST images for 2001 to 2020
+var years = ee.List.sequence(2001, 2020);
+var annualAverageLSTCollection = ee.ImageCollection.fromImages(
+  years.map(function(year) {
+    return calculateAnnualAverageLST(year);
+  })
+);
+
+// Print and visualize a sample year (e.g., 2010)
+print('Annual Average LST Collection (2001-2020):', annualAverageLSTCollection);
+
+var lstVis = {
+  min: -10, // Minimum LST in Celsius
+  max: 42,  // Maximum LST in Celsius
+  palette: [
+    '040274', '040281', '0502a3', '0502b8', '0502ce', '0502e6',
+    '0602ff', '235cb1', '307ef3', '269db1', '30c8e2', '32d3ef',
+    '3be285', '3ff38f', '86e26f', '3ae237', 'b5e22e', 'd6e21f',
+    'fff705', 'ffd611', 'ffb613', 'ff8b13', 'ff6e08', 'ff500d',
+    'ff0000', 'de0101', 'c21301', 'a71001', '911003'
+  ],
+};
+
+Map.centerObject(roi, 6);
+Map.addLayer(annualAverageLSTCollection.filter(ee.Filter.eq('year', 2010)).first(), lstVis, 'Average LST 2010 (°C)');
+
+// Export each year's average LST raster to Google Drive
+years.getInfo().forEach(function(year) {
+  var image = annualAverageLSTCollection.filter(ee.Filter.eq('year', year)).first();
+  Export.image.toDrive({
+    image: image,
+    description: 'Annual_Average_LST_Celsius_' + year,
+    folder: 'LST_Annual_Averages_Celsius',
+    scale: 250, // MODIS native resolution
+    region: roi, // Your ROI
+    maxPixels: 1e13,
+    fileFormat: 'GeoTIFF'
+  });
+});
+Code for MNDWI
+// Define scaling function for Landsat SR data
+var applyScalingFactors = function(image) {
+  return image.multiply(0.0000275).add(-0.2); // Apply scaling
+};
+
+// Function to calculate MNDWI
+var calculateNDMI = function(image) {
+  var scaledImage = image.select(['SR_B2', 'SR_B5']).multiply(0.0000275).add(-0.2); // Apply scaling directly
+  var ndmi = scaledImage.normalizedDifference(['SR_B2', 'SR_B5']).rename('MNDWI'); // Compute NDMI
+  return image.addBands(ndmi); // Add NDMI as a new band
+};
+
+// Load Landsat 5 SR data and calculate NDMI for 2001 to 2012
+var landsat5 = ee.ImageCollection("LANDSAT/LT05/C02/T1_L2")
+  .filterBounds(roi)
+  .filterDate('2001-01-01', '2012-12-31')
+  .filter(ee.Filter.lt('CLOUD_COVER', 10))
+  .map(calculateNDMI); // Map the function to compute NDMI
+
+// Compute annual mean MNDWI
+var years = ee.List.sequence(2001, 2012);
+var annualNDMI = ee.ImageCollection.fromImages(
+  years.map(function(year) {
+    var startDate = ee.Date.fromYMD(year, 1, 1);
+    var endDate = startDate.advance(1, 'year');
+    
+    var annualMean = landsat5.filterDate(startDate, endDate)
+                             .select('MNDWI')
+                             .mean()
+                             .set('year', year)
+                             .clip(roi);
+    
+    return annualMean.set('system:time_start', startDate.millis());
+  })
+);
+
+// Print and visualize NDMI for a sample year (e.g., 2005)
+print('Annual NDMI Collection (2001-2012):', annualNDMI);
+
+var ndmiVis = {
+  min: -1.0,
+  max: 1.0,
+  palette: ['blue', 'white', 'green'],
+};
+
+Map.centerObject(roi, 8);
+Map.addLayer(annualNDMI.filter(ee.Filter.eq('year', 2005)).first(), ndmiVis, 'NDMI 2005');
+
+// Export each year's NDMI raster to Google Drive
+years.getInfo().forEach(function(year) {
+  var image = annualNDMI.filter(ee.Filter.eq('year', year)).first();
+  Export.image.toDrive({
+    image: image,
+    description: 'Landsat5_Yearly_MNDWI_' + year,
+    folder: 'MNDWI_Annual_Rasters',
+    scale: 250,
+    region: roi,
+    maxPixels: 1e13,
+    fileFormat: 'GeoTIFF'
+  });
+});
+
+
+
+
+//NDMI for landsat 8
+
+
+// Define scaling function for Landsat SR data
+var applyScalingFactors = function(image) {
+  return image.multiply(0.0000275).add(-0.2); // Apply scaling
+};
+
+// Function to calculate MNDWI
+var calculateNDMI = function(image) {
+  var scaledImage = image.select(['SR_B3', 'SR_B6']).multiply(0.0000275).add(-0.2); // Apply scaling directly
+  var ndmi = scaledImage.normalizedDifference(['SR_B3', 'SR_B6']).rename('MNDWI'); // Compute NDMI
+  return image.addBands(ndmi); // Add NDMI as a new band
+};
+
+// Load Landsat 8 SR data and calculate NDMI for 2013 to 2022
+var landsat8 = ee.ImageCollection("LANDSAT/LC08/C02/T1_L2")
+  .filterBounds(roi)
+  .filterDate('2013-01-01', '2022-12-31')
+  .filter(ee.Filter.lt('CLOUD_COVER', 10))
+  .map(calculateNDMI); // Map the function to compute NDMI
+
+// Compute annual mean NDMI
+var years = ee.List.sequence(2013, 2022);
+var annualNDMI = ee.ImageCollection.fromImages(
+  years.map(function(year) {
+    var startDate = ee.Date.fromYMD(year, 1, 1);
+    var endDate = startDate.advance(1, 'year');
+    
+    var annualMean = landsat8.filterDate(startDate, endDate)
+                             .select('MNDWI')
+                             .mean()
+                             .set('year', year)
+                             .clip(roi);
+    
+    return annualMean.set('system:time_start', startDate.millis());
+  })
+);
+
+// Print and visualize NDMI for a sample year (e.g., 2015)
+print('Annual NDMI Collection (2013-2022):', annualNDMI);
+
+var ndmiVis = {
+  min: -1.0,
+  max: 1.0,
+  palette: ['blue', 'white', 'green'],
+};
+
+Map.centerObject(roi, 8);
+Map.addLayer(annualNDMI.filter(ee.Filter.eq('year', 2015)).first(), ndmiVis, 'NDMI 2015');
+
+// Export each year's NDMI raster to Google Drive
+years.getInfo().forEach(function(year) {
+  var image = annualNDMI.filter(ee.Filter.eq('year', year)).first();
+  Export.image.toDrive({
+    image: image,
+    description: 'Landsat8_Yearly_MNDWI_' + year,
+    folder: 'MNDWI_Annual_Rasters',
+    scale: 250,
+    region: roi,
+    maxPixels: 1e13,
+    fileFormat: 'GeoTIFF'
+  });
+});
+Code for MSAVI
+// ============================================================
+// MSAVI ANNUAL ANALYSIS: SUNDARBANS
+// Study period: 2001–2020
+// Spatial resolution: 30 m
+// Datasets: Landsat 5 TM + Landsat 8 OLI
+// Output: Annual MSAVI rasters + CSV summary
+// ============================================================
+
+
+// ------------------------------------------------------------
+// 1. FUNCTION TO MASK CLOUDS, SHADOWS AND SNOW
+// ------------------------------------------------------------
+
+function maskLandsatC2(image) {
+  var qa = image.select('QA_PIXEL');
+
+  var mask = qa.bitwiseAnd(1 << 1).eq(0)  // Dilated cloud
+    .and(qa.bitwiseAnd(1 << 2).eq(0))     // Cirrus
+    .and(qa.bitwiseAnd(1 << 3).eq(0))     // Cloud
+    .and(qa.bitwiseAnd(1 << 4).eq(0))     // Cloud shadow
+    .and(qa.bitwiseAnd(1 << 5).eq(0));    // Snow
+
+  return image.updateMask(mask);
+}
+
+
+// ------------------------------------------------------------
+// 2. FUNCTION TO CALCULATE MSAVI
+// Standard formula:
+// MSAVI = [2*NIR + 1 - sqrt((2*NIR + 1)^2 - 8*(NIR-RED))] / 2
+// ------------------------------------------------------------
+
+function calculateMSAVI(image, nirBand, redBand) {
+
+  var scaled = image.select([nirBand, redBand])
+    .multiply(0.0000275)
+    .add(-0.2);
+
+  var nir = scaled.select(nirBand);
+  var red = scaled.select(redBand);
+
+  var discriminant = nir.multiply(2).add(1).pow(2)
+    .subtract(nir.subtract(red).multiply(8))
+    .max(0);
+
+  var msavi = nir.multiply(2).add(1)
+    .subtract(discriminant.sqrt())
+    .divide(2)
+    .rename('MSAVI');
+
+  return msavi.copyProperties(image, [
+    'system:time_start',
+    'LANDSAT_PRODUCT_ID'
+  ]);
+}
+
+
+// ------------------------------------------------------------
+// 3. PROCESS LANDSAT 5 TM
+// ------------------------------------------------------------
+
+var landsat5 = ee.ImageCollection('LANDSAT/LT05/C02/T1_L2')
+  .filterBounds(roi)
+  .filterDate('2001-01-01', '2012-01-01')
+  .map(maskLandsatC2)
+  .map(function(image) {
+    return calculateMSAVI(image, 'SR_B4', 'SR_B3');
+  });
+
+
+// ------------------------------------------------------------
+// 4. PROCESS LANDSAT 8 OLI
+// ------------------------------------------------------------
+
+var landsat8 = ee.ImageCollection('LANDSAT/LC08/C02/T1_L2')
+  .filterBounds(roi)
+  .filterDate('2013-01-01', '2021-01-01')
+  .map(maskLandsatC2)
+  .map(function(image) {
+    return calculateMSAVI(image, 'SR_B5', 'SR_B4');
+  });
+
+
+// ------------------------------------------------------------
+// 5. MERGE COLLECTIONS
+// ------------------------------------------------------------
+
+var mergedCollection = landsat5.merge(landsat8);
+
+print('Merged MSAVI collection:', mergedCollection);
+
+
+// ------------------------------------------------------------
+// 6. DEFINE STUDY YEARS
+// ------------------------------------------------------------
+
+var years = ee.List.sequence(2001, 2020);
+
+
+// ------------------------------------------------------------
+// 7. CALCULATE ANNUAL MEAN MSAVI AND OBSERVATION COUNT
+// ------------------------------------------------------------
+
+var annualMSAVI = ee.ImageCollection.fromImages(
+  years.map(function(year) {
+
+    year = ee.Number(year);
+
+    var startDate = ee.Date.fromYMD(year, 1, 1);
+    var endDate = startDate.advance(1, 'year');
+
+    var yearlyCollection = mergedCollection.filterDate(
+      startDate, endDate
+    );
+
+    var annualMean = yearlyCollection.mean()
+      .rename('MSAVI')
+      .clip(roi);
+
+    var observationCount = yearlyCollection.count()
+      .rename('Observation_Count')
+      .clip(roi);
+
+    return annualMean.addBands(observationCount)
+      .set('year', year)
+      .set('system:time_start', startDate.millis())
+      .set('image_count', yearlyCollection.size());
+  })
+);
+
+print('Annual MSAVI collection (2001–2020):', annualMSAVI);
+
+
+// ------------------------------------------------------------
+// 8. VISUALIZE MSAVI FOR 2020
+// ------------------------------------------------------------
+
+var msavi2020 = annualMSAVI
+  .filter(ee.Filter.eq('year', 2020))
+  .first()
+  .select('MSAVI');
+
+var msaviVis = {
+  min: -0.2,
+  max: 0.8,
+  palette: ['8c510a', 'f6e8c3', 'a6d96a', '006837']
+};
+
+Map.centerObject(roi, 9);
+Map.addLayer(msavi2020, msaviVis, 'Annual Mean MSAVI 2020');
+
+
+// ------------------------------------------------------------
+// 9. ANNUAL ROI MEAN MSAVI AND IMAGE COUNTS
+// ------------------------------------------------------------
+
+var annualMSAVITable = ee.FeatureCollection(
+  annualMSAVI.map(function(image) {
+
+    var stats = image.select('MSAVI').reduceRegion({
+      reducer: ee.Reducer.mean(),
+      geometry: roi,
+      scale: 30,
+      maxPixels: 1e13,
+      tileScale: 4
+    });
+
+    return ee.Feature(null, {
+      year: image.get('year'),
+      Landsat_image_count: image.get('image_count'),
+      mean_annual_MSAVI: stats.get('MSAVI')
+    });
+  })
+);
+
+print('Annual MSAVI summary:', annualMSAVITable);
+
+
+// ------------------------------------------------------------
+// 10. EXPORT ANNUAL SUMMARY TABLE
+// ------------------------------------------------------------
+
+Export.table.toDrive({
+  collection: annualMSAVITable,
+  description: 'Annual_MSAVI_Summary_2001_2020',
+  folder: 'MSAVI_Annual_2001_2020',
+  fileNamePrefix: 'Annual_MSAVI_Summary_2001_2020',
+  fileFormat: 'CSV'
+});
+
+
+// ------------------------------------------------------------
+// 11. EXPORT EACH YEAR'S MSAVI RASTER
+// ------------------------------------------------------------
+
+years.getInfo().forEach(function(year) {
+
+  var image = annualMSAVI
+    .filter(ee.Filter.eq('year', year))
+    .first()
+    .select('MSAVI');
+
+  Export.image.toDrive({
+    image: image,
+    description: 'Annual_MSAVI_' + year,
+    folder: 'MSAVI_Annual_2001_2020',
+    fileNamePrefix: 'MSAVI_' + year,
+    scale: 30,
+    region: roi,
+    crs: 'EPSG:32645',
+    maxPixels: 1e13,
+    fileFormat: 'GeoTIFF'
+  });
+});
+Code for NDVI
+// ============================================================
+// MODIS NDVI ANNUAL EXTRACTION
+// Dataset: MODIS/061/MOD13Q1
+// Spatial resolution: 250 m
+// Study period: 2001–2020
+// Output: Annual NDVI rasters + CSV summary
+// ============================================================
+
+
+// ------------------------------------------------------------
+// 1. LOAD MODIS NDVI DATASET
+// ------------------------------------------------------------
+
+var dataset = ee.ImageCollection('MODIS/061/MOD13Q1')
+  .select('NDVI')
+  .filterBounds(roi);
+
+
+// ------------------------------------------------------------
+// 2. DEFINE STUDY YEARS
+// ------------------------------------------------------------
+
+var years = ee.List.sequence(2001, 2020);
+
+
+// ------------------------------------------------------------
+// 3. FUNCTION TO CALCULATE ANNUAL MEAN NDVI
+// ------------------------------------------------------------
+
+var calculateAnnualNDVI = function(year) {
+
+  year = ee.Number(year);
+
+  var startDate = ee.Date.fromYMD(year, 1, 1);
+  var endDate = startDate.advance(1, 'year');
+
+  var annualImage = dataset
+    .filterDate(startDate, endDate)
+    .mean()
+    .multiply(0.0001)  // MODIS NDVI scale factor
+    .rename('NDVI')
+    .clip(roi);
+
+  return annualImage
+    .set('year', year)
+    .set('system:time_start', startDate.millis());
+};
+
+
+// ------------------------------------------------------------
+// 4. CREATE ANNUAL NDVI IMAGE COLLECTION
+// ------------------------------------------------------------
+
+var annualNDVI = ee.ImageCollection.fromImages(
+  years.map(calculateAnnualNDVI)
+);
+
+print('Annual NDVI Collection (2001–2020):', annualNDVI);
+
+
+// ------------------------------------------------------------
+// 5. VISUALIZATION PARAMETERS
+// ------------------------------------------------------------
+
+var ndviVis = {
+  min: 0,
+  max: 1,
+  palette: [
+    'ffffff', 'ce7e45', 'df923d', 'f1b555',
+    'fcd163', '99b718', '74a901', '66a000',
+    '529400', '3e8601', '207401', '056201',
+    '004c00', '023b01', '012e01', '011d01',
+    '011301'
+  ]
+};
+
+
+// ------------------------------------------------------------
+// 6. DISPLAY ANNUAL NDVI FOR 2020
+// ------------------------------------------------------------
+
+var ndvi2020 = annualNDVI
+  .filter(ee.Filter.eq('year', 2020))
+  .first();
+
+Map.centerObject(roi, 8);
+Map.addLayer(ndvi2020, ndviVis, 'Annual Mean NDVI 2020');
+
+
+// ------------------------------------------------------------
+// 7. CALCULATE ROI-WIDE ANNUAL MEAN NDVI
+// ------------------------------------------------------------
+
+var annualStatistics = ee.FeatureCollection(
+  annualNDVI.map(function(image) {
+
+    var meanValues = image.reduceRegion({
+      reducer: ee.Reducer.mean(),
+      geometry: roi,
+      scale: 250,
+      maxPixels: 1e13,
+      tileScale: 4
+    });
+
+    return ee.Feature(null, {
+      Year: image.get('year'),
+      Mean_Annual_NDVI: meanValues.get('NDVI')
+    });
+
+  })
+);
+
+print('Annual NDVI Summary (2001–2020):', annualStatistics);
+
+
+// ------------------------------------------------------------
+// 8. EXPORT ANNUAL NDVI SUMMARY AS CSV
+// ------------------------------------------------------------
+
+Export.table.toDrive({
+  collection: annualStatistics,
+  description: 'Annual_NDVI_Summary_2001_2020',
+  folder: 'NDVI_Annual_2001_2020',
+  fileNamePrefix: 'Annual_NDVI_Summary_2001_2020',
+  fileFormat: 'CSV'
+});
+
+
+// ------------------------------------------------------------
+// 9. EXPORT EACH YEAR'S NDVI RASTER
+// ------------------------------------------------------------
+
+years.getInfo().forEach(function(year) {
+
+  var image = annualNDVI
+    .filter(ee.Filter.eq('year', year))
+    .first();
+
+  Export.image.toDrive({
+    image: image,
+    description: 'Annual_NDVI_' + year,
+    folder: 'NDVI_Annual_2001_2020',
+    fileNamePrefix: 'NDVI_' + year,
+    scale: 250,
+    region: roi,
+    crs: 'EPSG:4326',
+    maxPixels: 1e13,
+    fileFormat: 'GeoTIFF'
+  });
+
+});
+Code for PTC
+// Load the MODIS VCF Tree Cover dataset
+var modisPTC = ee.ImageCollection("MODIS/006/MOD44B")
+                .select('Percent_Tree_Cover');
+
+// Function to calculate annual tree cover
+var calculateAnnualPTC = function(year) {
+  var startDate = ee.Date.fromYMD(year, 1, 1);
+  var endDate = startDate.advance(1, 'year');
+  
+  var annualPTC = modisPTC.filterDate(startDate, endDate)
+                          .mean()
+                          .clip(roi)
+                          .set('year', year)
+                          .rename('Percent_Tree_Cover');
+  
+  return annualPTC;
+};
+
+// List of years for analysis
+var years = ee.List.sequence(2001, 2020);
+
+// Generate annual PTC images
+var annualPTCCollection = ee.ImageCollection.fromImages(
+  years.map(calculateAnnualPTC)
+);
+
+// Visualization parameters
+var ptcVis = {
+  min: 0,
+  max: 100,
+  palette: ['ffffff', 'c2e699', '78c679', '238443']  // white to green
+};
+
+// Display the PTC of one example year (e.g., 2020) on the map
+var exampleYear = annualPTCCollection.filter(ee.Filter.eq('year', 2020)).first();
+Map.centerObject(roi, 6);
+Map.addLayer(exampleYear, ptcVis, 'Percent Tree Cover (2020)');
+
+// Export each annual PTC raster to Google Drive
+years.getInfo().forEach(function(year) {
+  var image = annualPTCCollection.filter(ee.Filter.eq('year', year)).first();
+  
+  Export.image.toDrive({
+    image: image,
+    description: 'Annual_PTC_' + year,
+    folder: 'PTC_Export',
+    fileNamePrefix: 'PTC_' + year,
+    scale: 250, // MODIS VCF resolution is 250m
+    region: roi,
+    crs: 'EPSG:32645',
+    maxPixels: 1e13
+  });
+});
+Code for precipitation
+// Load TerraClimate dataset
+var dataset = ee.ImageCollection('IDAHO_EPSCOR/TERRACLIMATE')
+                .filterBounds(roi);
+
+// Function to calculate annual total precipitation
+var calculateAnnualPrecipitation = function(year) {
+  var startDate = ee.Date.fromYMD(year, 1, 1);
+  var endDate = startDate.advance(1, 'year');
+  
+  var annualPrecip = dataset.filterDate(startDate, endDate)
+                            .select('pr') // Precipitation in mm/month
+                            .sum() // Sum to get mm/year
+                            .clip(roi)
+                            .set('year', year)
+                            .set('system:time_start', startDate.millis());
+  
+  return annualPrecip.rename('precipitation');
+};
+
+// Define years 2001–2020
+var years = ee.List.sequence(2001, 2020);
+
+// Generate collection of annual precipitation totals
+var annualPrecipitationCollection = ee.ImageCollection.fromImages(
+  years.map(calculateAnnualPrecipitation)
+);
+
+// Visualization parameters
+var precipitationVis = {
+  min: 0,
+  max: 2000, // Adjust as needed
+  palette: [
+    'ffffff', 'c6e2ff', 'a5c9ff', '6499f3', '3a77c0', '1f57a5',
+    '003b5c', '001f3b'
+  ]
+};
+
+// Display a sample year (e.g., 2010)
+Map.centerObject(roi, 6);
+var exampleYear = annualPrecipitationCollection.filter(ee.Filter.eq('year', 2010)).first();
+Map.addLayer(exampleYear, precipitationVis, 'Annual Precipitation 2010');
+
+// --- Linear Regression: Precipitation Trend (2001–2020) --- //
+
+// Add year band for regression
+var withTime = annualPrecipitationCollection.map(function(image) {
+  var year = ee.Number(image.get('year'));
+  return image.addBands(ee.Image.constant(year).rename('year')).float();
+});
+
+// Perform linear regression
+var linearFit = withTime.select(['year', 'precipitation']).reduce(ee.Reducer.linearFit());
+
+// Visualize the slope (change in mm/year)
+var slopeVis = {
+  min: -50,
+  max: 50,
+  palette: ['red', 'white', 'blue']  // Red = drying, Blue = increasing precipitation
+};
+
+Map.addLayer(linearFit.select('scale'), slopeVis, 'Precipitation Trend Slope (2001–2020)');
+print('Linear Regression Result (Precipitation Trend)', linearFit);
+
+// --- Optional: Export the slope image --- //
+Export.image.toDrive({
+  image: linearFit.select('scale'),
+  description: 'Precipitation_Trend_Slope_2001_2020',
+  folder: 'Precipitation_Trend_Export',
+  fileNamePrefix: 'Precip_Trend_Slope',
+  region: roi,
+  scale: 4000,
+  crs: 'EPSG:4326',
+  maxPixels: 1e13
+});
+Code for Min temperature
+// Load TerraClimate dataset and filter to ROI
+var dataset = ee.ImageCollection('IDAHO_EPSCOR/TERRACLIMATE')
+                  .filterBounds(roi);
+
+// Function to calculate annual average tmmx
+var calculateAnnualTMIN = function(year) {
+  var startDate = ee.Date.fromYMD(year, 1, 1);
+  var endDate = startDate.advance(1, 'year');
+  
+  // Filter dataset for the year and calculate average tmmx
+  var annualTMIN = dataset.filterDate(startDate, endDate)
+                          .select('tmmn') // Select tmmx band
+                          .mean() // Calculate average
+                          .multiply(0.1) // Apply scaling factor
+                          .clip(roi) // Clip to ROI
+                          .set('year', year) // Add year property
+                          .set('system:time_start', startDate.millis()); // Set time metadata
+  
+  return annualTMIN;
+};
+
+// Generate annual average tmmx for 2001 to 2022
+var years = ee.List.sequence(2001, 2022);
+var annualTMINCollection = ee.ImageCollection.fromImages(
+  years.map(calculateAnnualTMIN)
+);
+
+// Print and visualize a sample year (e.g., 2010)
+print('Annual Average TMIN Collection (2001-2022):', annualTMINCollection);
+
+var tmmxVis = {
+  min: -20,
+  max: 50, // Adjust based on expected temperature range
+  palette: ['blue', 'green', 'yellow', 'orange', 'red']
+};
+
+Map.centerObject(roi, 6);
+Map.addLayer(annualTMINCollection.filter(ee.Filter.eq('year', 2010)).first(), tmmxVis, 'Annual Avg TMMX 2010');
+
+// Export each year's tmmx raster to Google Drive
+years.getInfo().forEach(function(year) {
+  var image = annualTMINCollection.filter(ee.Filter.eq('year', year)).first();
+  Export.image.toDrive({
+    image: image,
+    description: 'Annual_Avg_TMIN_' + year,
+    folder: 'TMIN_Annual_Averages',
+    scale: 4000, // TerraClimate native resolution
+    region: roi,
+    maxPixels: 1e13,
+    fileFormat: 'GeoTIFF'
+  });
+});
+Code for max temp
+// Load TerraClimate dataset and filter to ROI
+var dataset = ee.ImageCollection('IDAHO_EPSCOR/TERRACLIMATE')
+                  .filterBounds(roi);
+
+// Function to calculate annual average tmmx
+var calculateAnnualTMMX = function(year) {
+  var startDate = ee.Date.fromYMD(year, 1, 1);
+  var endDate = startDate.advance(1, 'year');
+  
+  // Filter dataset for the year and calculate average tmmx
+  var annualTMMX = dataset.filterDate(startDate, endDate)
+                          .select('tmmx') // Select tmmx band
+                          .mean() // Calculate average
+                          .multiply(0.1) // Apply scaling factor
+                          .clip(roi) // Clip to ROI
+                          .set('year', year) // Add year property
+                          .set('system:time_start', startDate.millis()); // Set time metadata
+  
+  return annualTMMX;
+};
+
+// Generate annual average tmmx for 2001 to 2022
+var years = ee.List.sequence(2001, 2022);
+var annualTMMXCollection = ee.ImageCollection.fromImages(
+  years.map(calculateAnnualTMMX)
+);
+
+// Print and visualize a sample year (e.g., 2010)
+print('Annual Average TMMX Collection (2001-2022):', annualTMMXCollection);
+
+var tmmxVis = {
+  min: -20,
+  max: 50, // Adjust based on expected temperature range
+  palette: ['blue', 'green', 'yellow', 'orange', 'red']
+};
+
+Map.centerObject(roi, 6);
+Map.addLayer(annualTMMXCollection.filter(ee.Filter.eq('year', 2010)).first(), tmmxVis, 'Annual Avg TMMX 2010');
+
+// Export each year's tmmx raster to Google Drive
+years.getInfo().forEach(function(year) {
+  var image = annualTMMXCollection.filter(ee.Filter.eq('year', year)).first();
+  Export.image.toDrive({
+    image: image,
+    description: 'Annual_Avg_TMMX_' + year,
+    folder: 'TMMX_Annual_Averages',
+    scale: 4000, // TerraClimate native resolution
+    region: roi,
+    maxPixels: 1e13,
+    fileFormat: 'GeoTIFF'
+  });
+});
+Code for mann kendall test and senslope
+LAI
+MODIS LAI TREND ANALYSIS: SUNDARBANS
+ Period: 2001–2020
+ Dataset: MODIS/061/MOD15A2H
+ Nominal spatial resolution: 500 m
+
+ PANEL A: Theil–Sen slope (LAI units/year)
+ PANEL B: Mann–Kendall trend significance classification
+ PANEL C: Binary significance mask
+
+ Outputs:
+ 1. Theil–Sen slope
+ 2. Mann–Kendall S statistic
+ 3. Approximate standardized Z statistic
+ 4. Approximate two-sided p-value
+ 5. Trend classification
+ 6. Binary significance mask
+ 7. Valid annual observation count
+ 8. CSV summary of pixel counts and percentages
+
+ Statistical limitations:
+ - Approximate MK variance without tie correction
+ - No correction for temporal autocorrelation
+ - Minimum 18 valid annual observations
+***************************************************************/
+
+// ============================================================
+// 1. STUDY AREA AND PARAMETERS
+// ============================================================
+
+// Import the Sundarbans boundary as "roi".
+// If your imported geometry is named "geometry", use:
+// var roi = geometry;
+
+var START_YEAR = 2001;
+var END_YEAR = 2020;
+var ALPHA = 0.05;
+var MIN_OBS = 18;
+var SCALE = 500;
+
+Map.centerObject(roi, 7);
+
+// ============================================================
+// 2. LOAD MODIS LAI AND QUALITY SCREENING
+// ============================================================
+
+var modis = ee.ImageCollection('MODIS/061/MOD15A2H')
+  .filterBounds(roi)
+  .filterDate(
+    ee.Date.fromYMD(START_YEAR, 1, 1),
+    ee.Date.fromYMD(END_YEAR + 1, 1, 1)
+  )
+  .select(['Lai_500m', 'FparLai_QC']);
+
+var laiCollection = modis.map(function(img) {
+  var raw = img.select('Lai_500m');
+  var qc = img.select('FparLai_QC');
+
+  // MODLAND QC bits 0–1 = 00: good-quality retrieval.
+  var goodQuality = qc.bitwiseAnd(3).eq(0);
+
+  // LAI scale factor = 0.1.
+  // Mask fill and out-of-range raw values.
+  var valid = raw.gte(0).and(raw.lte(100));
+
+  var lai = raw.multiply(0.1)
+    .rename('LAI')
+    .updateMask(goodQuality)
+    .updateMask(valid);
+
+  return lai.copyProperties(img, ['system:time_start']);
+});
+
+// ============================================================
+// 3. ANNUAL MEAN LAI, 2001–2020
+// ============================================================
+
+var years = ee.List.sequence(START_YEAR, END_YEAR);
+
+var annualLAI = ee.ImageCollection.fromImages(
+  years.map(function(y) {
+    y = ee.Number(y);
+
+    var start = ee.Date.fromYMD(y, 1, 1);
+    var end = start.advance(1, 'year');
+
+    var annual = laiCollection
+      .filterDate(start, end)
+      .mean()
+      .rename('LAI')
+      .clip(roi);
+
+    return annual
+      .set('year', y)
+      .set('system:time_start', start.millis());
+  })
+).sort('system:time_start');
+
+print('Annual LAI collection', annualLAI);
+print('Number of annual images', annualLAI.size());
+
+// Count valid annual LAI observations at each pixel.
+var n = annualLAI.select('LAI')
+  .count()
+  .rename('N_Valid')
+  .clip(roi);
+
+var validPeriod = n.gte(MIN_OBS);
+
+Map.addLayer(
+  n,
+  {
+    min: 0,
+    max: 20,
+    palette: ['FFFFFF', '74ADD1', '2166AC']
+  },
+  'Valid annual observations',
+  false
+);
+
+// ============================================================
+// 4. THEIL–SEN SLOPE: TREND MAGNITUDE
+// ============================================================
+
+var yearArray = [];
+for (var y = START_YEAR; y <= END_YEAR; y++) {
+  yearArray.push(y);
+}
+
+var slopeImages = [];
+var signImages = [];
+
+for (var i = 0; i < yearArray.length; i++) {
+  for (var j = i + 1; j < yearArray.length; j++) {
+
+    var year1 = yearArray[i];
+    var year2 = yearArray[j];
+
+    var img1 = ee.Image(
+      annualLAI.filter(ee.Filter.eq('year', year1)).first()
+    ).select('LAI');
+
+    var img2 = ee.Image(
+      annualLAI.filter(ee.Filter.eq('year', year2)).first()
+    ).select('LAI');
+
+    var difference = img2.subtract(img1);
+    var elapsed = year2 - year1;
+
+    // Pairwise slope in LAI units/year.
+    var pairSlope = difference
+      .divide(elapsed)
+      .rename('slope');
+
+    slopeImages.push(pairSlope);
+
+    // Mann–Kendall pairwise sign.
+    var pairSign = difference.gt(0)
+      .subtract(difference.lt(0))
+      .rename('sign');
+
+    signImages.push(pairSign);
+  }
+}
+
+var slopeCollection = ee.ImageCollection.fromImages(slopeImages);
+
+var senSlope = slopeCollection
+  .median()
+  .rename('Sen_Slope')
+  .updateMask(validPeriod)
+  .clip(roi);
+
+// ============================================================
+// 5. MANN–KENDALL S STATISTIC
+// ============================================================
+
+var mkS = ee.ImageCollection.fromImages(signImages)
+  .sum()
+  .rename('MK_S')
+  .updateMask(validPeriod)
+  .clip(roi);
+
+// ============================================================
+// 6. APPROXIMATE MK VARIANCE, Z AND P
+// ============================================================
+
+// No-tie-correction variance:
+// Var(S) = n(n-1)(2n+5)/18
+//
+// n is calculated separately for every pixel.
+// This is an approximate test; ties and serial correlation
+// require additional consideration for final inference.
+
+var variance = n
+  .multiply(n.subtract(1))
+  .multiply(n.multiply(2).add(5))
+  .divide(18)
+  .updateMask(validPeriod);
+
+// Continuity-corrected standardized Z statistic.
+var z = mkS.expression(
+  "(S > 0) ? (S - 1) / sqrt(V) : " +
+  "((S < 0) ? (S + 1) / sqrt(V) : 0)",
+  {
+    S: mkS,
+    V: variance
+  }
+)
+.rename('MK_Z')
+.updateMask(validPeriod);
+
+// Approximate two-sided p-value under the standard normal model.
+var pValue = ee.Image(1)
+  .subtract(
+    z.abs()
+      .divide(Math.sqrt(2))
+      .erf()
+  )
+  .rename('MK_p')
+  .clamp(0, 1)
+  .updateMask(validPeriod)
+  .clip(roi);
+
+// ============================================================
+// 7. TREND CLASS AND SIGNIFICANCE MASK
+// ============================================================
+
+// Trend_Class:
+// 0 = zero slope
+// 1 = significant increase
+// 2 = significant decrease
+// 3 = non-significant increase
+// 4 = non-significant decrease
+
+var trendClass = ee.Image(0)
+  .where(senSlope.gt(0).and(pValue.lt(ALPHA)), 1)
+  .where(senSlope.lt(0).and(pValue.lt(ALPHA)), 2)
+  .where(senSlope.gt(0).and(pValue.gte(ALPHA)), 3)
+  .where(senSlope.lt(0).and(pValue.gte(ALPHA)), 4)
+  .rename('Trend_Class')
+  .toInt8()
+  .updateMask(validPeriod)
+  .clip(roi);
+
+// Binary significance mask:
+// 1 = statistically significant at alpha = 0.05
+// 0 = not statistically significant
+// Pixels with insufficient observations remain masked.
+
+var significanceMask = pValue.lt(ALPHA)
+  .rename('Significant_Mask')
+  .toByte()
+  .updateMask(validPeriod)
+  .clip(roi);
+
+// Combine all output bands.
+var results = senSlope
+  .addBands(mkS)
+  .addBands(z)
+  .addBands(pValue)
+  .addBands(n)
+  .addBands(trendClass)
+  .addBands(significanceMask)
+  .clip(roi);
+
+print('Final LAI trend results', results);
+print('Output band names', results.bandNames());
+
+// ============================================================
+// 8. PANEL A: TREND MAGNITUDE
+// ============================================================
+
+// Red = negative slope; white = near zero; blue = positive.
+// Units: LAI units/year.
+
+Map.addLayer(
+  senSlope,
+  {
+    min: -0.02,
+    max: 0.02,
+    palette: ['B2182B', 'F7F7F7', '2166AC']
+  },
+  'Panel A: Theil–Sen slope (LAI units/year)',
+  true
+);
+
+// ============================================================
+// 9. PANEL B: TREND SIGNIFICANCE CLASSIFICATION
+// ============================================================
+
+// 1 = significant increase
+// 2 = significant decrease
+// 3 = non-significant increase
+// 4 = non-significant decrease
+// 0 = zero slope
+
+Map.addLayer(
+  trendClass,
+  {
+    min: 0,
+    max: 4,
+    palette: [
+      'BDBDBD',
+      '238443',
+      '2166AC',
+      'A1D99B',
+      '9ECAE1'
+    ]
+  },
+  'Panel B: MK trend classification',
+  true
+);
+
+// ============================================================
+// 10. PANEL C: BINARY SIGNIFICANCE MASK
+// ============================================================
+
+// Green = significant; grey = non-significant.
+// Both classes refer to p < 0.05 versus p >= 0.05.
+
+Map.addLayer(
+  significanceMask,
+  {
+    min: 0,
+    max: 1,
+    palette: ['BDBDBD', '238443']
+  },
+  'Panel C: Significance mask (alpha = 0.05)',
+  false
+);
+
+// Optional p-value map.
+Map.addLayer(
+  pValue,
+  {
+    min: 0,
+    max: 0.10,
+    palette: ['238443', 'FFFFBF', 'D7191C']
+  },
+  'Mann–Kendall approximate p-value',
+  false
+);
+
+// ============================================================
+// 11. SUMMARY TABLE: PIXEL COUNTS AND PERCENTAGES
+// ============================================================
+
+// Count valid classified pixels.
+var validPixelImage = ee.Image.constant(1)
+  .rename('pixel')
+  .updateMask(trendClass.mask());
+
+var validCountDict = validPixelImage.reduceRegion({
+  reducer: ee.Reducer.sum(),
+  geometry: roi,
+  scale: SCALE,
+  maxPixels: 1e13,
+  tileScale: 4
+});
+
+var totalValid = ee.Number(
+  validCountDict.get('pixel', 0)
+);
+
+print('Total valid classified pixels', totalValid);
+
+// Each category is counted using the same classification image.
+var categories = [
+  {code: 1, label: 'Significant increase'},
+  {code: 2, label: 'Significant decrease'},
+  {code: 3, label: 'Non-significant increase'},
+  {code: 4, label: 'Non-significant decrease'},
+  {code: 0, label: 'Zero slope'}
+];
+
+var summaryTable = ee.FeatureCollection(
+  categories.map(function(item) {
+    var code = item.code;
+
+    var classPixelImage = ee.Image.constant(1)
+      .rename('pixel')
+      .updateMask(trendClass.eq(code));
+
+    var countDict = classPixelImage.reduceRegion({
+      reducer: ee.Reducer.sum(),
+      geometry: roi,
+      scale: SCALE,
+      maxPixels: 1e13,
+      tileScale: 4
+    });
+
+    var count = ee.Number(countDict.get('pixel', 0));
+
+    var percentage = ee.Number(
+      ee.Algorithms.If(
+        totalValid.gt(0),
+        count.divide(totalValid).multiply(100),
+        0
+      )
+    );
+
+    return ee.Feature(null, {
+      'Class_code': code,
+      'Trend_category': item.label,
+      'Pixel_count': count,
+      'Percentage_of_valid_pixels': percentage,
+      'Period': '2001–2020',
+      'Significance_level': ALPHA,
+      'Minimum_valid_years': MIN_OBS
+    });
+  })
+);
+
+print('LAI trend summary table', summaryTable);
+
+// ============================================================
+// 12. EXPORT RASTER OUTPUTS
+// ============================================================
+
+Export.image.toDrive({
+  image: results,
+  description: 'Sundarbans_LAI_Trend_2001_2020_Final',
+  folder: 'LAI_Export',
+  fileNamePrefix: 'Sundarbans_LAI_Trend_2001_2020_Final',
+  region: roi,
+  scale: SCALE,
+  crs: 'EPSG:32645',
+  maxPixels: 1e13
+});
+
+// Export Panel A: slope.
+Export.image.toDrive({
+  image: senSlope,
+  description: 'Sundarbans_LAI_TheilSen_Slope_2001_2020',
+  folder: 'LAI_Export',
+  fileNamePrefix: 'LAI_TheilSen_Slope_2001_2020',
+  region: roi,
+  scale: SCALE,
+  crs: 'EPSG:32645',
+  maxPixels: 1e13
+});
+
+// Export Panel B: four-class trend classification.
+Export.image.toDrive({
+  image: trendClass,
+  description: 'Sundarbans_LAI_MK_Trend_Class_2001_2020',
+  folder: 'LAI_Export',
+  fileNamePrefix: 'LAI_MK_Trend_Class_2001_2020',
+  region: roi,
+  scale: SCALE,
+  crs: 'EPSG:32645',
+  maxPixels: 1e13
+});
+
+// Export Panel C: binary significance mask.
+Export.image.toDrive({
+  image: significanceMask,
+  description: 'Sundarbans_LAI_MK_Significance_Mask',
+  folder: 'LAI_Export',
+  fileNamePrefix: 'LAI_MK_Significance_Mask_2001_2020',
+  region: roi,
+  scale: SCALE,
+  crs: 'EPSG:32645',
+  maxPixels: 1e13
+});
+
+// Export summary table as CSV.
+Export.table.toDrive({
+  collection: summaryTable,
+  description: 'Sundarbans_LAI_Trend_Summary_2001_2020',
+  folder: 'LAI_Export',
+  fileNamePrefix: 'LAI_Trend_Summary_2001_2020',
+  fileFormat: 'CSV'
+});
+Max temp
+/***************************************************************
+ TERRACLIMATE TMMX TREND ANALYSIS: SUNDARBANS
+ Period: 2001–2020
+ Dataset: IDAHO_EPSCOR/TERRACLIMATE
+ Variable: tmmx
+ Native grid: approximately 4 km
+
+ PANEL A: Theil–Sen slope (°C/year)
+ PANEL B: Mann–Kendall trend classification
+ PANEL C: Binary significance mask
+
+ OUTPUTS:
+ 1. Sen_Slope
+ 2. MK_S
+ 3. MK_Z
+ 4. MK_p
+ 5. N_Valid
+ 6. Trend_Class
+ 7. Significant_Mask
+ 8. CSV trend summary
+
+ IMPORTANT:
+ Approximate MK test; no tie or serial-autocorrelation correction.
+***************************************************************/
+
+// ============================================================
+// 1. PARAMETERS AND STUDY AREA
+// ============================================================
+
+var START_YEAR = 2001;
+var END_YEAR = 2020;
+var ALPHA = 0.05;
+var MIN_OBS = 18;
+
+// TerraClimate has an approximately 4-km native grid.
+// Use the native grid scale for analysis and exports.
+var SCALE = 4638;
+
+Map.centerObject(roi, 7);
+
+// ============================================================
+// 2. LOAD TERRACLIMATE TMMX
+// ============================================================
+
+var source = ee.ImageCollection('IDAHO_EPSCOR/TERRACLIMATE')
+  .filterBounds(roi)
+  .filterDate('2001-01-01', '2021-01-01')
+  .select('tmmx');
+
+// ============================================================
+// 3. GENERATE ANNUAL MEAN TMMX
+// ============================================================
+
+// TerraClimate tmmx scale factor = 0.1.
+// Values converted to degrees Celsius.
+//
+// Each annual image represents the mean of the 12 monthly
+// maximum-temperature values, not the annual absolute maximum.
+
+var yearList = [];
+for (var y = START_YEAR; y <= END_YEAR; y++) {
+  yearList.push(y);
+}
+
+var annualImages = yearList.map(function(year) {
+
+  var start = ee.Date.fromYMD(year, 1, 1);
+  var end = start.advance(1, 'year');
+
+  var monthly = source.filterDate(start, end);
+
+  var annual = monthly
+    .mean()
+    .multiply(0.1)
+    .rename('TMMX')
+    .clip(roi);
+
+  return annual
+    .set('year', year)
+    .set('system:time_start', start.millis())
+    .set('n_months', monthly.size());
+});
+
+var annualTMMX = ee.ImageCollection.fromImages(annualImages)
+  .sort('system:time_start');
+
+print('Annual TMMX collection', annualTMMX);
+print('Number of annual images', annualTMMX.size());
+
+// ============================================================
+// 4. VALID ANNUAL OBSERVATION COUNT
+// ============================================================
+
+var n = annualTMMX
+  .select('TMMX')
+  .count()
+  .rename('N_Valid')
+  .clip(roi);
+
+var validMask = n.gte(MIN_OBS);
+
+Map.addLayer(
+  n,
+  {
+    min: 0,
+    max: 20,
+    palette: ['white', 'yellow', 'green']
+  },
+  'Valid annual observations',
+  false
+);
+
+// ============================================================
+// 5. THEIL–SEN SLOPE: TREND MAGNITUDE
+// ============================================================
+
+var slopeImages = [];
+var signImages = [];
+
+for (var i = 0; i < yearList.length; i++) {
+  for (var j = i + 1; j < yearList.length; j++) {
+
+    var year1 = yearList[i];
+    var year2 = yearList[j];
+
+    var image1 = ee.Image(
+      annualTMMX.filter(ee.Filter.eq('year', year1)).first()
+    ).select('TMMX');
+
+    var image2 = ee.Image(
+      annualTMMX.filter(ee.Filter.eq('year', year2)).first()
+    ).select('TMMX');
+
+    var difference = image2.subtract(image1);
+
+    // Pairwise slope in degrees Celsius per year.
+    var pairSlope = difference
+      .divide(year2 - year1)
+      .rename('slope');
+
+    slopeImages.push(pairSlope);
+
+    // Pairwise sign: +1, 0, or -1.
+    var pairSign = difference.gt(0).toInt8()
+      .subtract(difference.lt(0).toInt8())
+      .rename('sign');
+
+    signImages.push(pairSign);
+  }
+}
+
+var senSlope = ee.ImageCollection.fromImages(slopeImages)
+  .median()
+  .rename('Sen_Slope')
+  .updateMask(validMask)
+  .clip(roi);
+
+// ============================================================
+// 6. MANN–KENDALL S STATISTIC
+// ============================================================
+
+// Conventional S = sum of signs of all valid year-pair differences.
+// The result is not divided by the number of pairs.
+
+var mkS = ee.ImageCollection.fromImages(signImages)
+  .sum()
+  .rename('MK_S')
+  .updateMask(validMask)
+  .clip(roi);
+
+// ============================================================
+// 7. APPROXIMATE MK VARIANCE, Z AND P
+// ============================================================
+
+// Approximate variance without tie correction:
+// Var(S) = n(n - 1)(2n + 5) / 18.
+//
+// n is the number of valid annual observations per pixel.
+// This version does not correct for temporal autocorrelation.
+
+var variance = n
+  .multiply(n.subtract(1))
+  .multiply(n.multiply(2).add(5))
+  .divide(18)
+  .updateMask(validMask);
+
+// Continuity-corrected Z statistic.
+var positivePart = mkS.gt(0)
+  .multiply(mkS.subtract(1));
+
+var negativePart = mkS.lt(0)
+  .multiply(mkS.add(1));
+
+var z = positivePart
+  .add(negativePart)
+  .divide(variance.sqrt())
+  .rename('MK_Z')
+  .updateMask(validMask);
+
+// Approximate two-sided p-value using the standard normal model.
+var pValue = ee.Image.constant(1)
+  .subtract(
+    z.abs().divide(Math.sqrt(2)).erf()
+  )
+  .clamp(0, 1)
+  .rename('MK_p')
+  .updateMask(validMask)
+  .clip(roi);
+
+// ============================================================
+// 8. TREND CLASSIFICATION
+// ============================================================
+
+// 0 = zero slope
+// 1 = significant increase
+// 2 = significant decrease
+// 3 = non-significant increase
+// 4 = non-significant decrease
+
+var trendClass = ee.Image.constant(0)
+  .where(senSlope.gt(0).and(pValue.lt(ALPHA)), 1)
+  .where(senSlope.lt(0).and(pValue.lt(ALPHA)), 2)
+  .where(senSlope.gt(0).and(pValue.gte(ALPHA)), 3)
+  .where(senSlope.lt(0).and(pValue.gte(ALPHA)), 4)
+  .rename('Trend_Class')
+  .toInt8()
+  .updateMask(validMask)
+  .clip(roi);
+
+// Binary mask:
+// 1 = significant trend
+// 0 = non-significant trend
+// Invalid pixels remain masked.
+
+var significanceMask = pValue.lt(ALPHA)
+  .rename('Significant_Mask')
+  .toByte()
+  .updateMask(validMask)
+  .clip(roi);
+
+// ============================================================
+// 9. COMBINE FINAL OUTPUT BANDS
+// ============================================================
+
+var results = senSlope
+  .addBands(mkS)
+  .addBands(z)
+  .addBands(pValue)
+  .addBands(n.updateMask(validMask))
+  .addBands(trendClass)
+  .addBands(significanceMask)
+  .clip(roi);
+
+print('Final TMMX output bands', results.bandNames());
+print('Final TMMX trend image', results);
+
+// ============================================================
+// 10. PANEL A: THEIL–SEN SLOPE
+// ============================================================
+
+// Negative slope = decreasing TMMX.
+// Positive slope = increasing TMMX.
+// Units = °C/year.
+
+Map.addLayer(
+  senSlope,
+  {
+    min: -0.05,
+    max: 0.05,
+    palette: ['2166AC', 'F7F7F7', 'B2182B']
+  },
+  'Panel A: TMMX Theil–Sen slope (°C/year)',
+  true
+);
+
+// ============================================================
+// 11. PANEL B: MK TREND CLASSIFICATION
+// ============================================================
+
+Map.addLayer(
+  trendClass,
+  {
+    min: 0,
+    max: 4,
+    palette: [
+      'BDBDBD', // 0: zero slope
+      '238443', // 1: significant increase
+      '2166AC', // 2: significant decrease
+      'A1D99B', // 3: non-significant increase
+      '9ECAE1'  // 4: non-significant decrease
+    ]
+  },
+  'Panel B: TMMX MK trend classification',
+  true
+);
+
+// ============================================================
+// 12. PANEL C: BINARY SIGNIFICANCE MASK
+// ============================================================
+
+Map.addLayer(
+  significanceMask,
+  {
+    min: 0,
+    max: 1,
+    palette: ['BDBDBD', '238443']
+  },
+  'Panel C: TMMX significance mask (p < 0.05)',
+  false
+);
+
+Map.addLayer(
+  pValue,
+  {
+    min: 0,
+    max: 0.10,
+    palette: ['238443', 'FFFFBF', 'D7191C']
+  },
+  'TMMX MK approximate p-value',
+  false
+);
+
+// ============================================================
+// 13. SUMMARY TABLE: COUNTS AND PERCENTAGES
+// ============================================================
+
+// Count only valid classified pixels.
+var pixelOne = ee.Image.constant(1)
+  .rename('count')
+  .updateMask(trendClass.mask());
+
+var totalDict = pixelOne.reduceRegion({
+  reducer: ee.Reducer.sum(),
+  geometry: roi,
+  scale: SCALE,
+  maxPixels: 1e13,
+  tileScale: 4
+});
+
+var totalPixels = ee.Number(totalDict.get('count', 0));
+
+var codes = [1, 2, 3, 4, 0];
+
+var labels = [
+  'Significant increase',
+  'Significant decrease',
+  'Non-significant increase',
+  'Non-significant decrease',
+  'Zero slope'
+];
+
+var summary = ee.FeatureCollection(
+  codes.map(function(code, index) {
+
+    var selected = pixelOne.updateMask(
+      trendClass.eq(code)
+    );
+
+    var dictionary = selected.reduceRegion({
+      reducer: ee.Reducer.sum(),
+      geometry: roi,
+      scale: SCALE,
+      maxPixels: 1e13,
+      tileScale: 4
+    });
+
+    var count = ee.Number(dictionary.get('count', 0));
+
+    var percentage = ee.Number(
+      ee.Algorithms.If(
+        totalPixels.gt(0),
+        count.divide(totalPixels).multiply(100),
+        0
+      )
+    );
+
+    return ee.Feature(null, {
+      'Class_code': code,
+      'Trend_category': labels[index],
+      'Pixel_count': count,
+      'Percentage': percentage,
+      'Period': '2001-2020',
+      'Alpha': ALPHA,
+      'Minimum_observations': MIN_OBS
+    });
+  })
+);
+
+print('TMMX trend summary table', summary);
+
+// ============================================================
+// 14. EXPORT FINAL MULTIBAND RESULTS
+// ============================================================
+
+Export.image.toDrive({
+  image: results,
+  description: 'Sundarbans_TMMX_Trend_2001_2020',
+  folder: 'TMMX_Trend',
+  fileNamePrefix: 'Sundarbans_TMMX_Trend_2001_2020',
+  region: roi,
+  scale: SCALE,
+  crs: 'EPSG:4326',
+  maxPixels: 1e13,
+  fileFormat: 'GeoTIFF'
+});
+
+// ============================================================
+// 15. EXPORT SLOPE MAP
+// ============================================================
+
+Export.image.toDrive({
+  image: senSlope,
+  description: 'TMMX_TheilSen_Slope_2001_2020',
+  folder: 'TMMX_Trend',
+  fileNamePrefix: 'TMMX_TheilSen_Slope_2001_2020',
+  region: roi,
+  scale: SCALE,
+  crs: 'EPSG:4326',
+  maxPixels: 1e13,
+  fileFormat: 'GeoTIFF'
+});
+
+// ============================================================
+// 16. EXPORT TREND CLASSIFICATION
+// ============================================================
+
+Export.image.toDrive({
+  image: trendClass,
+  description: 'TMMX_MK_Trend_Class_2001_2020',
+  folder: 'TMMX_Trend',
+  fileNamePrefix: 'TMMX_MK_Trend_Class_2001_2020',
+  region: roi,
+  scale: SCALE,
+  crs: 'EPSG:4326',
+  maxPixels: 1e13,
+  fileFormat: 'GeoTIFF'
+});
+
+// ============================================================
+// 17. EXPORT SIGNIFICANCE MASK
+// ============================================================
+
+Export.image.toDrive({
+  image: significanceMask,
+  description: 'TMMX_MK_Significance_Mask_2001_2020',
+  folder: 'TMMX_Trend',
+  fileNamePrefix: 'TMMX_MK_Significance_Mask_2001_2020',
+  region: roi,
+  scale: SCALE,
+  crs: 'EPSG:4326',
+  maxPixels: 1e13,
+  fileFormat: 'GeoTIFF'
+});
+
+// ============================================================
+// 18. EXPORT SUMMARY TABLE
+// ============================================================
+
+Export.table.toDrive({
+  collection: summary,
+  description: 'TMMX_Trend_Summary_2001_2020',
+  folder: 'TMMX_Trend',
+  fileNamePrefix: 'TMMX_Trend_Summary_2001_2020',
+  fileFormat: 'CSV'
+});
+Precipitation
+
+/***************************************************************
+ TERRACLIMATE ANNUAL PRECIPITATION TREND ANALYSIS: SUNDARBANS
+ Period: 2001–2020
+ Dataset: IDAHO_EPSCOR/TERRACLIMATE
+ Variable: pr (monthly precipitation, mm/month)
+
+ PANEL A: Theil–Sen slope (mm/year²)
+ PANEL B: Mann–Kendall trend classification
+ PANEL C: Binary significance mask
+
+ OUTPUTS:
+ 1. Sen_Slope
+ 2. MK_S
+ 3. MK_Z
+ 4. MK_p
+ 5. N_Valid
+ 6. Trend_Class
+ 7. Significant_Mask
+ 8. CSV trend summary
+
+ NOTE:
+ Approximate Mann–Kendall test; no tie correction or
+ temporal-autocorrelation correction is applied.
+***************************************************************/
+
+// ============================================================
+// 1. PARAMETERS AND STUDY AREA
+// ============================================================
+
+var START_YEAR = 2001;
+var END_YEAR = 2020;
+var ALPHA = 0.05;
+var MIN_OBS = 18;
+
+// TerraClimate native grid is approximately 4 km.
+var SCALE = 4638;
+
+Map.centerObject(roi, 7);
+
+// ============================================================
+// 2. LOAD TERRACLIMATE PRECIPITATION
+// ============================================================
+
+var source = ee.ImageCollection('IDAHO_EPSCOR/TERRACLIMATE')
+  .filterBounds(roi)
+  .filterDate('2001-01-01', '2021-01-01')
+  .select('pr');
+
+// ============================================================
+// 3. CALCULATE ANNUAL PRECIPITATION
+// ============================================================
+
+// TerraClimate pr is monthly precipitation in mm/month.
+// Sum the monthly values to obtain annual precipitation in mm/year.
+
+var yearList = [];
+
+for (var y = START_YEAR; y <= END_YEAR; y++) {
+  yearList.push(y);
+}
+
+var annualImages = yearList.map(function(year) {
+
+  var start = ee.Date.fromYMD(year, 1, 1);
+  var end = start.advance(1, 'year');
+
+  var monthly = source.filterDate(start, end);
+
+  var annual = monthly
+    .select('pr')
+    .sum()
+    .rename('Precip')
+    .clip(roi);
+
+  return annual
+    .set('year', year)
+    .set('system:time_start', start.millis())
+    .set('n_months', monthly.size());
+});
+
+var annualPrecip = ee.ImageCollection.fromImages(annualImages)
+  .sort('system:time_start');
+
+print('Annual precipitation collection', annualPrecip);
+print('Number of annual images', annualPrecip.size());
+
+// ============================================================
+// 4. COUNT VALID ANNUAL OBSERVATIONS
+// ============================================================
+
+var n = annualPrecip
+  .select('Precip')
+  .count()
+  .rename('N_Valid')
+  .clip(roi);
+
+var validMask = n.gte(MIN_OBS);
+
+Map.addLayer(
+  n,
+  {
+    min: 0,
+    max: 20,
+    palette: ['white', 'yellow', 'green']
+  },
+  'Valid annual observations',
+  false
+);
+
+// ============================================================
+// 5. THEIL–SEN SLOPE: TREND MAGNITUDE
+// ============================================================
+
+// Pairwise slope = (later annual precipitation - earlier
+// annual precipitation) / elapsed years.
+//
+// Units: (mm/year) / year = mm/year².
+
+var slopeImages = [];
+var signImages = [];
+
+for (var i = 0; i < yearList.length; i++) {
+  for (var j = i + 1; j < yearList.length; j++) {
+
+    var year1 = yearList[i];
+    var year2 = yearList[j];
+
+    var image1 = ee.Image(
+      annualPrecip.filter(ee.Filter.eq('year', year1)).first()
+    ).select('Precip');
+
+    var image2 = ee.Image(
+      annualPrecip.filter(ee.Filter.eq('year', year2)).first()
+    ).select('Precip');
+
+    var difference = image2.subtract(image1);
+
+    var pairSlope = difference
+      .divide(year2 - year1)
+      .rename('slope');
+
+    slopeImages.push(pairSlope);
+
+    // Pairwise sign: +1, 0 or -1.
+    var pairSign = difference.gt(0).toInt8()
+      .subtract(difference.lt(0).toInt8())
+      .rename('sign');
+
+    signImages.push(pairSign);
+  }
+}
+
+var senSlope = ee.ImageCollection.fromImages(slopeImages)
+  .median()
+  .rename('Sen_Slope')
+  .updateMask(validMask)
+  .clip(roi);
+
+// ============================================================
+// 6. MANN–KENDALL S STATISTIC
+// ============================================================
+
+// Conventional MK S = sum of pairwise signs.
+// There are 190 pairs for 20 complete annual observations.
+
+var mkS = ee.ImageCollection.fromImages(signImages)
+  .sum()
+  .rename('MK_S')
+  .updateMask(validMask)
+  .clip(roi);
+
+print('Mann–Kendall S statistic', mkS);
+
+// ============================================================
+// 7. APPROXIMATE VARIANCE, Z AND P-VALUE
+// ============================================================
+
+// No-tie-correction variance:
+// Var(S) = n(n-1)(2n+5)/18.
+//
+// n is calculated per pixel. The approximation assumes
+// independent annual observations.
+
+var variance = n
+  .multiply(n.subtract(1))
+  .multiply(n.multiply(2).add(5))
+  .divide(18)
+  .updateMask(validMask);
+
+// Continuity-corrected standardized Z statistic.
+var positivePart = mkS.gt(0)
+  .multiply(mkS.subtract(1));
+
+var negativePart = mkS.lt(0)
+  .multiply(mkS.add(1));
+
+var z = positivePart
+  .add(negativePart)
+  .divide(variance.sqrt())
+  .rename('MK_Z')
+  .updateMask(validMask);
+
+// Approximate two-sided p-value from the standard normal model.
+var pValue = ee.Image.constant(1)
+  .subtract(
+    z.abs().divide(Math.sqrt(2)).erf()
+  )
+  .clamp(0, 1)
+  .rename('MK_p')
+  .updateMask(validMask)
+  .clip(roi);
+
+// ============================================================
+// 8. TREND CLASSIFICATION
+// ============================================================
+
+// 0 = zero slope
+// 1 = significant increase
+// 2 = significant decrease
+// 3 = non-significant increase
+// 4 = non-significant decrease
+
+var trendClass = ee.Image.constant(0)
+  .where(senSlope.gt(0).and(pValue.lt(ALPHA)), 1)
+  .where(senSlope.lt(0).and(pValue.lt(ALPHA)), 2)
+  .where(senSlope.gt(0).and(pValue.gte(ALPHA)), 3)
+  .where(senSlope.lt(0).and(pValue.gte(ALPHA)), 4)
+  .rename('Trend_Class')
+  .toInt8()
+  .updateMask(validMask)
+  .clip(roi);
+
+// Binary mask: 1 = significant; 0 = non-significant.
+var significanceMask = pValue.lt(ALPHA)
+  .rename('Significant_Mask')
+  .toByte()
+  .updateMask(validMask)
+  .clip(roi);
+
+// ============================================================
+// 9. COMBINE OUTPUT BANDS
+// ============================================================
+
+var results = senSlope
+  .addBands(mkS)
+  .addBands(z)
+  .addBands(pValue)
+  .addBands(n.updateMask(validMask))
+  .addBands(trendClass)
+  .addBands(significanceMask)
+  .clip(roi);
+
+print('Final precipitation output bands', results.bandNames());
+print('Final precipitation trend image', results);
+
+// ============================================================
+// 10. PANEL A: THEIL–SEN SLOPE
+// ============================================================
+
+// Blue = decreasing; white = near zero; red = increasing.
+// Units: mm/year².
+
+Map.addLayer(
+  senSlope,
+  {
+    min: -20,
+    max: 20,
+    palette: ['2166AC', 'F7F7F7', 'B2182B']
+  },
+  'Panel A: Precipitation slope (mm/year²)',
+  true
+);
+
+// ============================================================
+// 11. PANEL B: MK TREND CLASSIFICATION
+// ============================================================
+
+Map.addLayer(
+  trendClass,
+  {
+    min: 0,
+    max: 4,
+    palette: [
+      'BDBDBD', // 0: zero slope
+      '238443', // 1: significant increase
+      '2166AC', // 2: significant decrease
+      'A1D99B', // 3: non-significant increase
+      '9ECAE1'  // 4: non-significant decrease
+    ]
+  },
+  'Panel B: Precipitation MK trend classification',
+  true
+);
+
+// ============================================================
+// 12. PANEL C: SIGNIFICANCE MASK
+// ============================================================
+
+Map.addLayer(
+  significanceMask,
+  {
+    min: 0,
+    max: 1,
+    palette: ['BDBDBD', '238443']
+  },
+  'Panel C: Significance mask (p < 0.05)',
+  false
+);
+
+Map.addLayer(
+  pValue,
+  {
+    min: 0,
+    max: 0.10,
+    palette: ['238443', 'FFFFBF', 'D7191C']
+  },
+  'MK approximate p-value',
+  false
+);
+
+// ============================================================
+// 13. SUMMARY TABLE: PIXEL COUNTS AND PERCENTAGES
+// ============================================================
+
+// Percentages use valid classified pixels as the denominator.
+
+var pixelOne = ee.Image.constant(1)
+  .rename('count')
+  .updateMask(trendClass.mask());
+
+var totalDict = pixelOne.reduceRegion({
+  reducer: ee.Reducer.sum(),
+  geometry: roi,
+  scale: SCALE,
+  maxPixels: 1e13,
+  tileScale: 4
+});
+
+var totalPixels = ee.Number(totalDict.get('count', 0));
+
+var codes = [1, 2, 3, 4, 0];
+
+var labels = [
+  'Significant increase',
+  'Significant decrease',
+  'Non-significant increase',
+  'Non-significant decrease',
+  'Zero slope'
+];
+
+var summary = ee.FeatureCollection(
+  codes.map(function(code, index) {
+
+    var selected = pixelOne.updateMask(
+      trendClass.eq(code)
+    );
+
+    var dictionary = selected.reduceRegion({
+      reducer: ee.Reducer.sum(),
+      geometry: roi,
+      scale: SCALE,
+      maxPixels: 1e13,
+      tileScale: 4
+    });
+
+    var count = ee.Number(dictionary.get('count', 0));
+
+    var percentage = ee.Number(
+      ee.Algorithms.If(
+        totalPixels.gt(0),
+        count.divide(totalPixels).multiply(100),
+        0
+      )
+    );
+
+    return ee.Feature(null, {
+      'Class_code': code,
+      'Trend_category': labels[index],
+      'Pixel_count': count,
+      'Percentage': percentage,
+      'Period': '2001-2020',
+      'Alpha': ALPHA,
+      'Minimum_observations': MIN_OBS
+    });
+  })
+);
+
+print('Precipitation trend summary table', summary);
+
+// ============================================================
+// 14. EXPORT MULTIBAND RESULTS
+// ============================================================
+
+Export.image.toDrive({
+  image: results,
+  description: 'Sundarbans_Precip_Trend_2001_2020',
+  folder: 'Precipitation_Trend',
+  fileNamePrefix: 'Sundarbans_Precip_Trend_2001_2020',
+  region: roi,
+  scale: SCALE,
+  crs: 'EPSG:4326',
+  maxPixels: 1e13,
+  fileFormat: 'GeoTIFF'
+});
+
+// ============================================================
+// 15. EXPORT SLOPE MAP
+// ============================================================
+
+Export.image.toDrive({
+  image: senSlope,
+  description: 'Precip_TheilSen_Slope_2001_2020',
+  folder: 'Precipitation_Trend',
+  fileNamePrefix: 'Precip_TheilSen_Slope_2001_2020',
+  region: roi,
+  scale: SCALE,
+  crs: 'EPSG:4326',
+  maxPixels: 1e13,
+  fileFormat: 'GeoTIFF'
+});
+
+// ============================================================
+// 16. EXPORT TREND CLASSIFICATION
+// ============================================================
+
+Export.image.toDrive({
+  image: trendClass,
+  description: 'Precip_MK_Trend_Class_2001_2020',
+  folder: 'Precipitation_Trend',
+  fileNamePrefix: 'Precip_MK_Trend_Class_2001_2020',
+  region: roi,
+  scale: SCALE,
+  crs: 'EPSG:4326',
+  maxPixels: 1e13,
+  fileFormat: 'GeoTIFF'
+});
+
+// ============================================================
+// 17. EXPORT SIGNIFICANCE MASK
+// ============================================================
+
+Export.image.toDrive({
+  image: significanceMask,
+  description: 'Precip_MK_Significance_Mask_2001_2020',
+  folder: 'Precipitation_Trend',
+  fileNamePrefix: 'Precip_MK_Significance_Mask_2001_2020',
+  region: roi,
+  scale: SCALE,
+  crs: 'EPSG:4326',
+  maxPixels: 1e13,
+  fileFormat: 'GeoTIFF'
+});
+
+// ============================================================
+// 18. EXPORT SUMMARY CSV
+// ============================================================
+
+Export.table.toDrive({
+  collection: summary,
+  description: 'Precip_Trend_Summary_2001_2020',
+  folder: 'Precipitation_Trend',
+  fileNamePrefix: 'Precip_Trend_Summary_2001_2020',
+  fileFormat: 'CSV'
+});
+AET
+
+/***************************************************************
+ TERRACLIMATE AET TREND ANALYSIS: SUNDARBANS
+ Period: 2001–2020
+ Dataset: IDAHO_EPSCOR/TERRACLIMATE
+ Variable: aet
+ Native grid: approximately 4 km
+
+ PANEL A: Theil–Sen slope (mm/year²)
+ PANEL B: Mann–Kendall trend classification
+ PANEL C: Binary significance mask
+
+ OUTPUT BANDS:
+ 1. Sen_Slope
+ 2. MK_S
+ 3. MK_Z
+ 4. MK_p
+ 5. N_Valid
+ 6. Trend_Class
+ 7. Significant_Mask
+
+ ADDITIONAL OUTPUT:
+ CSV summary of pixel counts and percentages.
+
+ NOTE:
+ Approximate MK test; no tie or temporal-autocorrelation
+ correction is applied.
+***************************************************************/
+
+// ============================================================
+// 1. PARAMETERS AND STUDY AREA
+// ============================================================
+
+var START_YEAR = 2001;
+var END_YEAR = 2020;
+var ALPHA = 0.05;
+var MIN_OBS = 18;
+var SCALE = 4638;
+
+Map.centerObject(roi, 7);
+
+// ============================================================
+// 2. LOAD TERRACLIMATE AET
+// ============================================================
+
+var source = ee.ImageCollection('IDAHO_EPSCOR/TERRACLIMATE')
+  .filterBounds(roi)
+  .filterDate('2001-01-01', '2021-01-01')
+  .select('aet');
+
+// ============================================================
+// 3. CALCULATE ANNUAL AET
+// ============================================================
+
+// TerraClimate AET scale factor = 0.1.
+// Annual AET = sum of the 12 monthly values after scaling.
+// Units: mm/year.
+
+var yearList = [];
+
+for (var y = START_YEAR; y <= END_YEAR; y++) {
+  yearList.push(y);
+}
+
+var annualImages = yearList.map(function(year) {
+
+  var start = ee.Date.fromYMD(year, 1, 1);
+  var end = start.advance(1, 'year');
+
+  var monthly = source.filterDate(start, end);
+
+  var annual = monthly
+    .select('aet')
+    .sum()
+    .multiply(0.1)
+    .rename('AET')
+    .clip(roi);
+
+  return annual
+    .set('year', year)
+    .set('system:time_start', start.millis())
+    .set('n_months', monthly.size());
+});
+
+var annualAET = ee.ImageCollection.fromImages(annualImages)
+  .sort('system:time_start');
+
+print('Annual AET collection', annualAET);
+print('Number of annual AET images', annualAET.size());
+
+// ============================================================
+// 4. VALID ANNUAL OBSERVATION COUNT
+// ============================================================
+
+var n = annualAET
+  .select('AET')
+  .count()
+  .rename('N_Valid')
+  .clip(roi);
+
+var validMask = n.gte(MIN_OBS);
+
+Map.addLayer(
+  n,
+  {
+    min: 0,
+    max: 20,
+    palette: ['white', 'yellow', 'green']
+  },
+  'Valid annual observations',
+  false
+);
+
+// ============================================================
+// 5. THEIL–SEN SLOPE: TREND MAGNITUDE
+// ============================================================
+
+// Pairwise slope = (later AET - earlier AET) / elapsed years.
+// Units: (mm/year) / year = mm/year².
+
+var slopeImages = [];
+var signImages = [];
+
+for (var i = 0; i < yearList.length; i++) {
+  for (var j = i + 1; j < yearList.length; j++) {
+
+    var year1 = yearList[i];
+    var year2 = yearList[j];
+
+    var image1 = ee.Image(
+      annualAET.filter(ee.Filter.eq('year', year1)).first()
+    ).select('AET');
+
+    var image2 = ee.Image(
+      annualAET.filter(ee.Filter.eq('year', year2)).first()
+    ).select('AET');
+
+    var difference = image2.subtract(image1);
+
+    var pairSlope = difference
+      .divide(year2 - year1)
+      .rename('slope');
+
+    slopeImages.push(pairSlope);
+
+    // Pairwise sign: +1, 0, or -1.
+    var pairSign = difference.gt(0).toInt8()
+      .subtract(difference.lt(0).toInt8())
+      .rename('sign');
+
+    signImages.push(pairSign);
+  }
+}
+
+var senSlope = ee.ImageCollection.fromImages(slopeImages)
+  .median()
+  .rename('Sen_Slope')
+  .updateMask(validMask)
+  .clip(roi);
+
+// ============================================================
+// 6. MANN–KENDALL S STATISTIC
+// ============================================================
+
+// Conventional MK S = sum of pairwise signs.
+// For 20 complete annual observations, there are 190 pairs.
+
+var mkS = ee.ImageCollection.fromImages(signImages)
+  .sum()
+  .rename('MK_S')
+  .updateMask(validMask)
+  .clip(roi);
+
+print('Mann–Kendall S statistic', mkS);
+
+// ============================================================
+// 7. APPROXIMATE MK VARIANCE, Z AND P-VALUE
+// ============================================================
+
+// No-tie-correction variance:
+// Var(S) = n(n - 1)(2n + 5) / 18.
+//
+// n is evaluated per pixel. This approximate test does not
+// correct for ties or temporal autocorrelation.
+
+var variance = n
+  .multiply(n.subtract(1))
+  .multiply(n.multiply(2).add(5))
+  .divide(18)
+  .updateMask(validMask);
+
+// Continuity-corrected standardized Z statistic.
+var positivePart = mkS.gt(0)
+  .multiply(mkS.subtract(1));
+
+var negativePart = mkS.lt(0)
+  .multiply(mkS.add(1));
+
+var z = positivePart
+  .add(negativePart)
+  .divide(variance.sqrt())
+  .rename('MK_Z')
+  .updateMask(validMask);
+
+// Approximate two-sided p-value under the standard normal model.
+var pValue = ee.Image.constant(1)
+  .subtract(
+    z.abs().divide(Math.sqrt(2)).erf()
+  )
+  .clamp(0, 1)
+  .rename('MK_p')
+  .updateMask(validMask)
+  .clip(roi);
+
+// ============================================================
+// 8. TREND CLASSIFICATION
+// ============================================================
+
+// 0 = zero slope
+// 1 = significant increase
+// 2 = significant decrease
+// 3 = non-significant increase
+// 4 = non-significant decrease
+
+var trendClass = ee.Image.constant(0)
+  .where(senSlope.gt(0).and(pValue.lt(ALPHA)), 1)
+  .where(senSlope.lt(0).and(pValue.lt(ALPHA)), 2)
+  .where(senSlope.gt(0).and(pValue.gte(ALPHA)), 3)
+  .where(senSlope.lt(0).and(pValue.gte(ALPHA)), 4)
+  .rename('Trend_Class')
+  .toInt8()
+  .updateMask(validMask)
+  .clip(roi);
+
+// Binary significance mask:
+// 1 = statistically significant
+// 0 = non-significant
+// Invalid pixels remain masked.
+
+var significanceMask = pValue.lt(ALPHA)
+  .rename('Significant_Mask')
+  .toByte()
+  .updateMask(validMask)
+  .clip(roi);
+
+// ============================================================
+// 9. COMBINE FINAL OUTPUT BANDS
+// ============================================================
+
+var results = senSlope
+  .addBands(mkS)
+  .addBands(z)
+  .addBands(pValue)
+  .addBands(n.updateMask(validMask))
+  .addBands(trendClass)
+  .addBands(significanceMask)
+  .clip(roi);
+
+print('Final AET output bands', results.bandNames());
+print('Final AET trend image', results);
+
+// ============================================================
+// 10. PANEL A: THEIL–SEN SLOPE
+// ============================================================
+
+// Blue = decreasing AET.
+// White = near zero.
+// Red = increasing AET.
+// Units: mm/year².
+
+Map.addLayer(
+  senSlope,
+  {
+    min: -20,
+    max: 20,
+    palette: ['2166AC', 'F7F7F7', 'B2182B']
+  },
+  'Panel A: AET Theil–Sen slope (mm/year²)',
+  true
+);
+
+// ============================================================
+// 11. PANEL B: MK TREND CLASSIFICATION
+// ============================================================
+
+Map.addLayer(
+  trendClass,
+  {
+    min: 0,
+    max: 4,
+    palette: [
+      'BDBDBD', // 0: zero slope
+      '238443', // 1: significant increase
+      '2166AC', // 2: significant decrease
+      'A1D99B', // 3: non-significant increase
+      '9ECAE1'  // 4: non-significant decrease
+    ]
+  },
+  'Panel B: AET MK trend classification',
+  true
+);
+
+// ============================================================
+// 12. PANEL C: BINARY SIGNIFICANCE MASK
+// ============================================================
+
+Map.addLayer(
+  significanceMask,
+  {
+    min: 0,
+    max: 1,
+    palette: ['BDBDBD', '238443']
+  },
+  'Panel C: AET significance mask (p < 0.05)',
+  false
+);
+
+Map.addLayer(
+  pValue,
+  {
+    min: 0,
+    max: 0.10,
+    palette: ['238443', 'FFFFBF', 'D7191C']
+  },
+  'AET MK approximate p-value',
+  false
+);
+
+// ============================================================
+// 13. SUMMARY TABLE: PIXEL COUNTS AND PERCENTAGES
+// ============================================================
+
+// Percentages are based on valid classified pixels.
+
+var pixelOne = ee.Image.constant(1)
+  .rename('count')
+  .updateMask(trendClass.mask());
+
+var totalDict = pixelOne.reduceRegion({
+  reducer: ee.Reducer.sum(),
+  geometry: roi,
+  scale: SCALE,
+  maxPixels: 1e13,
+  tileScale: 4
+});
+
+var totalPixels = ee.Number(totalDict.get('count', 0));
+
+var codes = [1, 2, 3, 4, 0];
+
+var labels = [
+  'Significant increase',
+  'Significant decrease',
+  'Non-significant increase',
+  'Non-significant decrease',
+  'Zero slope'
+];
+
+var summary = ee.FeatureCollection(
+  codes.map(function(code, index) {
+
+    var selected = pixelOne.updateMask(
+      trendClass.eq(code)
+    );
+
+    var dictionary = selected.reduceRegion({
+      reducer: ee.Reducer.sum(),
+      geometry: roi,
+      scale: SCALE,
+      maxPixels: 1e13,
+      tileScale: 4
+    });
+
+    var count = ee.Number(dictionary.get('count', 0));
+
+    var percentage = ee.Number(
+      ee.Algorithms.If(
+        totalPixels.gt(0),
+        count.divide(totalPixels).multiply(100),
+        0
+      )
+    );
+
+    return ee.Feature(null, {
+      'Class_code': code,
+      'Trend_category': labels[index],
+      'Pixel_count': count,
+      'Percentage': percentage,
+      'Period': '2001-2020',
+      'Alpha': ALPHA,
+      'Minimum_observations': MIN_OBS
+    });
+  })
+);
+
+print('AET trend summary table', summary);
+
+// ============================================================
+// 14. EXPORT MULTIBAND RESULTS
+// ============================================================
+
+Export.image.toDrive({
+  image: results,
+  description: 'Sundarbans_AET_Trend_2001_2020',
+  folder: 'AET_Trend',
+  fileNamePrefix: 'Sundarbans_AET_Trend_2001_2020',
+  region: roi,
+  scale: SCALE,
+  crs: 'EPSG:4326',
+  maxPixels: 1e13,
+  fileFormat: 'GeoTIFF'
+});
+
+// ============================================================
+// 15. EXPORT SLOPE MAP
+// ============================================================
+
+Export.image.toDrive({
+  image: senSlope,
+  description: 'AET_TheilSen_Slope_2001_2020',
+  folder: 'AET_Trend',
+  fileNamePrefix: 'AET_TheilSen_Slope_2001_2020',
+  region: roi,
+  scale: SCALE,
+  crs: 'EPSG:4326',
+  maxPixels: 1e13,
+  fileFormat: 'GeoTIFF'
+});
+
+// ============================================================
+// 16. EXPORT TREND CLASSIFICATION
+// ============================================================
+
+Export.image.toDrive({
+  image: trendClass,
+  description: 'AET_MK_Trend_Class_2001_2020',
+  folder: 'AET_Trend',
+  fileNamePrefix: 'AET_MK_Trend_Class_2001_2020',
+  region: roi,
+  scale: SCALE,
+  crs: 'EPSG:4326',
+  maxPixels: 1e13,
+  fileFormat: 'GeoTIFF'
+});
+
+// ============================================================
+// 17. EXPORT SIGNIFICANCE MASK
+// ============================================================
+
+Export.image.toDrive({
+  image: significanceMask,
+  description: 'AET_MK_Significance_Mask_2001_2020',
+  folder: 'AET_Trend',
+  fileNamePrefix: 'AET_MK_Significance_Mask_2001_2020',
+  region: roi,
+  scale: SCALE,
+  crs: 'EPSG:4326',
+  maxPixels: 1e13,
+  fileFormat: 'GeoTIFF'
+});
+
+// ============================================================
+// 18. EXPORT SUMMARY CSV
+// ============================================================
+
+Export.table.toDrive({
+  collection: summary,
+  description: 'AET_Trend_Summary_2001_2020',
+  folder: 'AET_Trend',
+  fileNamePrefix: 'AET_Trend_Summary_2001_2020',
+  fileFormat: 'CSV'
+});
+EVI
+
+/***************************************************************
+ MODIS EVI TREND ANALYSIS: SUNDARBANS
+ Period: 2001–2020
+ Dataset: MODIS/061/MOD13Q1
+ Nominal resolution: 250 m
+
+ PANEL A: Theil–Sen slope (EVI units/year)
+ PANEL B: Mann–Kendall trend classification
+ PANEL C: Binary significance mask
+
+ OUTPUTS:
+ 1. Sen_Slope
+ 2. MK_S
+ 3. MK_Z
+ 4. MK_p
+ 5. N_Valid
+ 6. Trend_Class
+ 7. Significant_Mask
+ 8. CSV trend summary
+
+ NOTE:
+ Approximate MK test; no tie or autocorrelation correction.
+***************************************************************/
+
+// ============================================================
+// 1. PARAMETERS AND STUDY AREA
+// ============================================================
+
+var START_YEAR = 2001;
+var END_YEAR = 2020;
+var ALPHA = 0.05;
+var MIN_OBS = 18;
+var SCALE = 250;
+
+Map.centerObject(roi, 7);
+
+// ============================================================
+// 2. LOAD MODIS EVI AND QUALITY SCREENING
+// ============================================================
+
+var source = ee.ImageCollection('MODIS/061/MOD13Q1')
+  .filterBounds(roi)
+  .filterDate('2001-01-01', '2023-01-01')
+  .select(['EVI', 'SummaryQA']);
+
+var eviCollection = source.map(function(img) {
+  var rawEVI = img.select('EVI');
+  var qa = img.select('SummaryQA');
+
+  // SummaryQA:
+  // 0 = good quality
+  // 1 = marginal quality
+  // Retain good and marginal observations.
+  var qualityMask = qa.lte(1);
+
+  // MODIS EVI scale factor = 0.0001.
+  // Exclude fill values and invalid scaled values.
+  var validRange = rawEVI.gte(-2000)
+    .and(rawEVI.lte(10000));
+
+  return rawEVI
+    .multiply(0.0001)
+    .rename('EVI')
+    .updateMask(qualityMask)
+    .updateMask(validRange)
+    .copyProperties(img, ['system:time_start']);
+});
+
+// ============================================================
+// 3. GENERATE ANNUAL MEAN EVI
+// ============================================================
+
+var yearList = [];
+
+for (var y = START_YEAR; y <= END_YEAR; y++) {
+  yearList.push(y);
+}
+
+var annualImages = yearList.map(function(year) {
+  var start = ee.Date.fromYMD(year, 1, 1);
+  var end = start.advance(1, 'year');
+
+  var annual = eviCollection
+    .filterDate(start, end)
+    .select('EVI')
+    .mean()
+    .rename('EVI')
+    .clip(roi);
+
+  return annual
+    .set('year', year)
+    .set('system:time_start', start.millis());
+});
+
+var annualEVI = ee.ImageCollection.fromImages(annualImages)
+  .sort('system:time_start');
+
+print('Annual EVI collection', annualEVI);
+print('Number of annual images', annualEVI.size());
+
+// ============================================================
+// 4. VALID ANNUAL OBSERVATION COUNT
+// ============================================================
+
+var n = annualEVI
+  .select('EVI')
+  .count()
+  .rename('N_Valid')
+  .clip(roi);
+
+var validMask = n.gte(MIN_OBS);
+
+Map.addLayer(
+  n,
+  {
+    min: 0,
+    max: 22,
+    palette: ['white', 'yellow', 'green']
+  },
+  'Valid annual observations',
+  false
+);
+
+// ============================================================
+// 5. THEIL–SEN SLOPE: TREND MAGNITUDE
+// ============================================================
+
+var slopeImages = [];
+var signImages = [];
+
+for (var i = 0; i < yearList.length; i++) {
+  for (var j = i + 1; j < yearList.length; j++) {
+
+    var year1 = yearList[i];
+    var year2 = yearList[j];
+
+    var image1 = ee.Image(
+      annualEVI.filter(ee.Filter.eq('year', year1)).first()
+    ).select('EVI');
+
+    var image2 = ee.Image(
+      annualEVI.filter(ee.Filter.eq('year', year2)).first()
+    ).select('EVI');
+
+    var difference = image2.subtract(image1);
+
+    // Pairwise slope in EVI units/year.
+    slopeImages.push(
+      difference.divide(year2 - year1).rename('slope')
+    );
+
+    // Pairwise MK sign: +1, 0, or -1.
+    signImages.push(
+      difference.gt(0).toInt8()
+        .subtract(difference.lt(0).toInt8())
+        .rename('sign')
+    );
+  }
+}
+
+var senSlope = ee.ImageCollection.fromImages(slopeImages)
+  .median()
+  .rename('Sen_Slope')
+  .updateMask(validMask)
+  .clip(roi);
+
+// ============================================================
+// 6. MANN–KENDALL S STATISTIC
+// ============================================================
+
+// Conventional MK S = sum of pairwise signs.
+// For 22 complete annual observations, there are 231 pairs.
+
+var mkS = ee.ImageCollection.fromImages(signImages)
+  .sum()
+  .rename('MK_S')
+  .updateMask(validMask)
+  .clip(roi);
+
+print('Mann–Kendall S statistic', mkS);
+
+// ============================================================
+// 7. APPROXIMATE MK VARIANCE, Z AND P-VALUE
+// ============================================================
+
+// Approximate variance without tie correction:
+// Var(S) = n(n-1)(2n+5)/18.
+//
+// n is calculated per pixel. This does not correct for
+// ties or temporal autocorrelation.
+
+var variance = n
+  .multiply(n.subtract(1))
+  .multiply(n.multiply(2).add(5))
+  .divide(18)
+  .updateMask(validMask);
+
+// Continuity-corrected standardized Z statistic.
+var positivePart = mkS.gt(0)
+  .multiply(mkS.subtract(1));
+
+var negativePart = mkS.lt(0)
+  .multiply(mkS.add(1));
+
+var z = positivePart
+  .add(negativePart)
+  .divide(variance.sqrt())
+  .rename('MK_Z')
+  .updateMask(validMask);
+
+// Approximate two-sided p-value.
+var pValue = ee.Image.constant(1)
+  .subtract(
+    z.abs().divide(Math.sqrt(2)).erf()
+  )
+  .clamp(0, 1)
+  .rename('MK_p')
+  .updateMask(validMask)
+  .clip(roi);
+
+// ============================================================
+// 8. TREND CLASSIFICATION
+// ============================================================
+
+// 0 = zero slope
+// 1 = significant increase
+// 2 = significant decrease
+// 3 = non-significant increase
+// 4 = non-significant decrease
+
+var trendClass = ee.Image.constant(0)
+  .where(senSlope.gt(0).and(pValue.lt(ALPHA)), 1)
+  .where(senSlope.lt(0).and(pValue.lt(ALPHA)), 2)
+  .where(senSlope.gt(0).and(pValue.gte(ALPHA)), 3)
+  .where(senSlope.lt(0).and(pValue.gte(ALPHA)), 4)
+  .rename('Trend_Class')
+  .toInt8()
+  .updateMask(validMask)
+  .clip(roi);
+
+// Binary significance mask:
+// 1 = significant, 0 = non-significant.
+// Invalid pixels remain masked.
+
+var significanceMask = pValue.lt(ALPHA)
+  .rename('Significant_Mask')
+  .toByte()
+  .updateMask(validMask)
+  .clip(roi);
+
+// ============================================================
+// 9. COMBINE OUTPUT BANDS
+// ============================================================
+
+var results = senSlope
+  .addBands(mkS)
+  .addBands(z)
+  .addBands(pValue)
+  .addBands(n.updateMask(validMask))
+  .addBands(trendClass)
+  .addBands(significanceMask)
+  .clip(roi);
+
+print('Final EVI output bands', results.bandNames());
+print('Final EVI trend image', results);
+
+// ============================================================
+// 10. PANEL A: THEIL–SEN SLOPE
+// ============================================================
+
+// Blue = decreasing EVI.
+// White = near zero.
+// Red = increasing EVI.
+// Units: EVI units/year.
+
+Map.addLayer(
+  senSlope,
+  {
+    min: -0.005,
+    max: 0.005,
+    palette: ['2166AC', 'F7F7F7', 'B2182B']
+  },
+  'Panel A: EVI Theil–Sen slope (EVI units/year)',
+  true
+);
+
+// ============================================================
+// 11. PANEL B: MK TREND CLASSIFICATION
+// ============================================================
+
+Map.addLayer(
+  trendClass,
+  {
+    min: 0,
+    max: 4,
+    palette: [
+      'BDBDBD', // 0: zero slope
+      '238443', // 1: significant increase
+      '2166AC', // 2: significant decrease
+      'A1D99B', // 3: non-significant increase
+      '9ECAE1'  // 4: non-significant decrease
+    ]
+  },
+  'Panel B: EVI MK trend classification',
+  true
+);
+
+// ============================================================
+// 12. PANEL C: BINARY SIGNIFICANCE MASK
+// ============================================================
+
+Map.addLayer(
+  significanceMask,
+  {
+    min: 0,
+    max: 1,
+    palette: ['BDBDBD', '238443']
+  },
+  'Panel C: EVI significance mask (p < 0.05)',
+  false
+);
+
+Map.addLayer(
+  pValue,
+  {
+    min: 0,
+    max: 0.10,
+    palette: ['238443', 'FFFFBF', 'D7191C']
+  },
+  'EVI MK approximate p-value',
+  false
+);
+
+// ============================================================
+// 13. SUMMARY TABLE: PIXEL COUNTS AND PERCENTAGES
+// ============================================================
+
+var pixelOne = ee.Image.constant(1)
+  .rename('count')
+  .updateMask(trendClass.mask());
+
+var totalDict = pixelOne.reduceRegion({
+  reducer: ee.Reducer.sum(),
+  geometry: roi,
+  scale: SCALE,
+  maxPixels: 1e13,
+  tileScale: 4
+});
+
+var totalPixels = ee.Number(totalDict.get('count', 0));
+
+var codes = [1, 2, 3, 4, 0];
+
+var labels = [
+  'Significant increase',
+  'Significant decrease',
+  'Non-significant increase',
+  'Non-significant decrease',
+  'Zero slope'
+];
+
+var summary = ee.FeatureCollection(
+  codes.map(function(code, index) {
+
+    var selected = pixelOne.updateMask(
+      trendClass.eq(code)
+    );
+
+    var dictionary = selected.reduceRegion({
+      reducer: ee.Reducer.sum(),
+      geometry: roi,
+      scale: SCALE,
+      maxPixels: 1e13,
+      tileScale: 4
+    });
+
+    var count = ee.Number(dictionary.get('count', 0));
+
+    var percentage = ee.Number(
+      ee.Algorithms.If(
+        totalPixels.gt(0),
+        count.divide(totalPixels).multiply(100),
+        0
+      )
+    );
+
+    return ee.Feature(null, {
+      'Class_code': code,
+      'Trend_category': labels[index],
+      'Pixel_count': count,
+      'Percentage': percentage,
+      'Period': '2001-2020',
+      'Alpha': ALPHA,
+      'Minimum_observations': MIN_OBS
+    });
+  })
+);
+
+print('EVI trend summary table', summary);
+
+// ============================================================
+// 14. EXPORT MULTIBAND RESULTS
+// ============================================================
+
+Export.image.toDrive({
+  image: results,
+  description: 'Sundarbans_EVI_Trend_2001_2020',
+  folder: 'EVI_Export',
+  fileNamePrefix: 'Sundarbans_EVI_Trend_2001_2020',
+  region: roi,
+  scale: SCALE,
+  crs: 'EPSG:32645',
+  maxPixels: 1e13,
+  fileFormat: 'GeoTIFF'
+});
+
+// ============================================================
+// 15. EXPORT SLOPE MAP
+// ============================================================
+
+Export.image.toDrive({
+  image: senSlope,
+  description: 'EVI_TheilSen_Slope_2001_2020',
+  folder: 'EVI_Export',
+  fileNamePrefix: 'EVI_TheilSen_Slope_2001_2020',
+  region: roi,
+  scale: SCALE,
+  crs: 'EPSG:32645',
+  maxPixels: 1e13,
+  fileFormat: 'GeoTIFF'
+});
+
+// ============================================================
+// 16. EXPORT TREND CLASSIFICATION
+// ============================================================
+
+Export.image.toDrive({
+  image: trendClass,
+  description: 'EVI_MK_Trend_Class_2001_2020',
+  folder: 'EVI_Export',
+  fileNamePrefix: 'EVI_MK_Trend_Class_2001_2020',
+  region: roi,
+  scale: SCALE,
+  crs: 'EPSG:32645',
+  maxPixels: 1e13,
+  fileFormat: 'GeoTIFF'
+});
+
+// ============================================================
+// 17. EXPORT SIGNIFICANCE MASK
+// ============================================================
+
+Export.image.toDrive({
+  image: significanceMask,
+  description: 'EVI_MK_Significance_Mask_2001_2022',
+  folder: 'EVI_Export',
+  fileNamePrefix: 'EVI_MK_Significance_Mask_2001_2020',
+  region: roi,
+  scale: SCALE,
+  crs: 'EPSG:32645',
+  maxPixels: 1e13,
+  fileFormat: 'GeoTIFF'
+});
+
+// ============================================================
+// 18. EXPORT SUMMARY CSV
+// ============================================================
+
+Export.table.toDrive({
+  collection: summary,
+  description: 'EVI_Trend_Summary_2001_2022',
+  folder: 'EVI_Export',
+  fileNamePrefix: 'EVI_Trend_Summary_2001_2022',
+  fileFormat: 'CSV'
+});
+LST
+
+// ============================================================
+// MODIS DAYTIME LAND SURFACE TEMPERATURE TREND ANALYSIS
+// Study period: 2001–2020
+// Dataset: MODIS/061/MOD11A1
+// Nominal spatial resolution: 1 km
+// Variable: Annual mean daytime LST (°C)
+//
+// OUTPUTS:
+// 1. Annual LST stack
+// 2. Theil–Sen slope (°C/year)
+// 3. Mann–Kendall S statistic
+// 4. Approximate MK Z statistic
+// 5. Approximate two-sided MK p-value
+// 6. Trend classification
+// 7. Significance mask
+// 8. Valid annual observation count
+// 9. CSV pixel summary
+// 10. Combined and individual GeoTIFFs
+//
+// IMPORTANT:
+// - Requires an imported study-area geometry named "roi".
+// - MK variance is approximate; tie and autocorrelation
+//   corrections are not included.
+// - Missing-year handling should be validated before
+//   interpreting pixel-level significance.
+// ============================================================
+
+
+// ------------------------------------------------------------
+// 1. SETTINGS
+// ------------------------------------------------------------
+
+var START_YEAR = 2001;
+var END_YEAR = 2020;
+var ALPHA = 0.05;
+var MIN_OBS = 18;
+
+var SCALE = 1000;
+var EXPORT_CRS = 'EPSG:32645';
+
+Map.centerObject(roi, 6);
+
+
+// ------------------------------------------------------------
+// 2. LOAD DAILY MODIS DATA
+// Avoid printing the full daily ImageCollection.
+// ------------------------------------------------------------
+
+var source = ee.ImageCollection('MODIS/061/MOD11A1')
+  .filterBounds(roi)
+  .filterDate(
+    ee.Date.fromYMD(START_YEAR, 1, 1),
+    ee.Date.fromYMD(END_YEAR + 1, 1, 1)
+  )
+  .select(['LST_Day_1km', 'QC_Day']);
+
+print('Daily image count', source.size());
+
+
+// ------------------------------------------------------------
+// 3. QUALITY CONTROL AND CONVERSION TO CELSIUS
+// ------------------------------------------------------------
+// MOD11A1 LST scale factor = 0.02 Kelvin
+// LST (°C) = raw LST × 0.02 - 273.15
+//
+// QC_Day bits:
+// 0–1: mandatory QA, 00 = good
+// 2–3: data quality, 00 = good
+// 6–7: LST error class, 0 or 1
+// ------------------------------------------------------------
+
+function prepareLST(image) {
+
+  var raw = image.select('LST_Day_1km');
+  var qc = image.select('QC_Day');
+
+  var mandatoryQA = qc.bitwiseAnd(3).eq(0);
+
+  var dataQA = qc
+    .rightShift(2)
+    .bitwiseAnd(3)
+    .eq(0);
+
+  var errorQA = qc
+    .rightShift(6)
+    .bitwiseAnd(3)
+    .lte(1);
+
+  var valid = raw.gt(0)
+    .and(mandatoryQA)
+    .and(dataQA)
+    .and(errorQA);
+
+  var lstCelsius = raw
+    .multiply(0.02)
+    .subtract(273.15)
+    .rename('LST')
+    .updateMask(valid)
+    .toFloat();
+
+  return lstCelsius.copyProperties(
+    image, ['system:time_start']
+  );
+}
+
+
+// ------------------------------------------------------------
+// 4. CREATE ANNUAL MEAN LST COMPOSITES
+// All annual images must have the SAME band name: "LST".
+// ------------------------------------------------------------
+
+var years = [];
+var annualImages = [];
+
+for (var year = START_YEAR; year <= END_YEAR; year++) {
+
+  years.push(year);
+
+  var startDate = ee.Date.fromYMD(year, 1, 1);
+  var endDate = startDate.advance(1, 'year');
+
+  var annualCollection = source
+    .filterDate(startDate, endDate)
+    .map(prepareLST);
+
+  var annualImage = annualCollection
+    .mean()
+    .rename('LST')
+    .toFloat()
+    .clip(roi)
+    .set('year', year)
+    .set('system:time_start', startDate.millis());
+
+  annualImages.push(annualImage);
+}
+
+var annualLST = ee.ImageCollection
+  .fromImages(annualImages)
+  .sort('system:time_start');
+
+print('Annual composite count', annualLST.size());
+
+
+// ------------------------------------------------------------
+// 5. STACK ANNUAL IMAGES
+// Rename bands only AFTER creating the ImageCollection.
+// ------------------------------------------------------------
+
+var stackedLST = annualLST.toBands();
+
+var bandNames = years.map(function(year) {
+  return 'LST_' + year;
+});
+
+stackedLST = stackedLST
+  .rename(bandNames)
+  .toFloat();
+
+print('Annual LST band names', stackedLST.bandNames());
+
+
+// ------------------------------------------------------------
+// 6. VALID ANNUAL OBSERVATION COUNT
+// count() is an ImageCollection method.
+// ------------------------------------------------------------
+
+var validYearCount = annualLST
+  .count()
+  .rename('Valid_Years')
+  .clip(roi);
+
+var validMask = validYearCount.gte(MIN_OBS);
+
+Map.addLayer(
+  validYearCount,
+  {
+    min: 0,
+    max: 20,
+    palette: [
+      '8c2d04', 'fecc5c', 'ffffb2', '31a354'
+    ]
+  },
+  'Valid annual observations',
+  false
+);
+
+
+// ------------------------------------------------------------
+// 7. DISPLAY ANNUAL LST FOR 2010
+// ------------------------------------------------------------
+
+Map.addLayer(
+  stackedLST
+    .select('LST_2010')
+    .updateMask(validMask),
+  {
+    min: 0,
+    max: 42,
+    palette: [
+      '313695', '4575b4', '74add1', 'abd9e9',
+      'e0f3f8', 'ffffbf', 'fee090', 'fdae61',
+      'f46d43', 'd73027', 'a50026'
+    ]
+  },
+  'Annual mean daytime LST 2010 (°C)',
+  false
+);
+
+
+// ------------------------------------------------------------
+// 8. THEIL–SEN SLOPE
+// Median of pairwise annual slopes.
+// Units: °C/year
+// ------------------------------------------------------------
+
+var pairwiseSlopes = [];
+
+for (var i = 0; i < years.length; i++) {
+
+  for (var j = i + 1; j < years.length; j++) {
+
+    var yearI = years[i];
+    var yearJ = years[j];
+
+    var imageI = stackedLST.select('LST_' + yearI);
+    var imageJ = stackedLST.select('LST_' + yearJ);
+
+    var pairSlope = imageJ
+      .subtract(imageI)
+      .divide(yearJ - yearI)
+      .rename('Pairwise_Slope')
+      .toFloat();
+
+    pairwiseSlopes.push(pairSlope);
+  }
+}
+
+var senSlope = ee.ImageCollection
+  .fromImages(pairwiseSlopes)
+  .median()
+  .rename('Theil_Sen_Slope')
+  .toFloat()
+  .updateMask(validMask)
+  .clip(roi);
+
+print('Theil–Sen slope image', senSlope);
+
+
+// ------------------------------------------------------------
+// 9. MANN–KENDALL S STATISTIC
+// S = sum of sign(Xj - Xi) for all j > i
+//
+// Positive S = warming tendency
+// Negative S = cooling tendency
+// S = 0 = no net direction
+//
+// This is conventional, unnormalized S.
+// ------------------------------------------------------------
+
+var pairwiseSigns = [];
+
+for (var i = 0; i < years.length; i++) {
+
+  for (var j = i + 1; j < years.length; j++) {
+
+    var xi = stackedLST.select('LST_' + years[i]);
+    var xj = stackedLST.select('LST_' + years[j]);
+
+    var difference = xj.subtract(xi);
+
+    var sign = difference.gt(0)
+      .subtract(difference.lt(0))
+      .rename('Sign')
+      .unmask(0)
+      .toFloat();
+
+    pairwiseSigns.push(sign);
+  }
+}
+
+var mkS = ee.ImageCollection
+  .fromImages(pairwiseSigns)
+  .sum()
+  .rename('MK_S')
+  .toFloat()
+  .updateMask(validMask)
+  .clip(roi);
+
+print('Mann–Kendall S statistic', mkS);
+
+
+// ------------------------------------------------------------
+// 10. APPROXIMATE MK Z STATISTIC AND P-VALUE
+// ------------------------------------------------------------
+// Var(S) = n(n - 1)(2n + 5) / 18
+//
+// Continuity correction:
+// S > 0: S - 1
+// S < 0: S + 1
+// S = 0: 0
+//
+// p = 1 - erf(|Z| / sqrt(2))
+//
+// This approximation does not apply tie or serial-correlation
+// correction.
+// ------------------------------------------------------------
+
+var n = validYearCount.toFloat();
+
+var varianceS = n
+  .multiply(n.subtract(1))
+  .multiply(n.multiply(2).add(5))
+  .divide(18)
+  .toFloat();
+
+var zNumerator = ee.Image.constant(0).toFloat()
+  .where(mkS.gt(0), mkS.subtract(1))
+  .where(mkS.lt(0), mkS.add(1));
+
+var mkZ = zNumerator
+  .divide(varianceS.sqrt())
+  .rename('MK_Z')
+  .toFloat()
+  .updateMask(validMask)
+  .clip(roi);
+
+var mkP = ee.Image.constant(1).toFloat()
+  .subtract(
+    mkZ.abs()
+      .divide(Math.sqrt(2))
+      .erf()
+  )
+  .clamp(0, 1)
+  .rename('MK_p')
+  .toFloat()
+  .updateMask(validMask)
+  .clip(roi);
+
+print('MK Z statistic', mkZ);
+print('Approximate MK p-value', mkP);
+
+
+// ------------------------------------------------------------
+// 11. TREND CLASSIFICATION
+// 0 = zero slope
+// 1 = significant warming
+// 2 = significant cooling
+// 3 = non-significant warming
+// 4 = non-significant cooling
+// ------------------------------------------------------------
+
+var trendClass = ee.Image.constant(0)
+  .toByte()
+  .where(senSlope.gt(0).and(mkP.lt(ALPHA)), 1)
+  .where(senSlope.lt(0).and(mkP.lt(ALPHA)), 2)
+  .where(senSlope.gt(0).and(mkP.gte(ALPHA)), 3)
+  .where(senSlope.lt(0).and(mkP.gte(ALPHA)), 4)
+  .rename('Trend_Class')
+  .updateMask(validMask)
+  .clip(roi);
+
+var significanceMask = mkP.lt(ALPHA)
+  .rename('Significant_Trend')
+  .toByte()
+  .updateMask(validMask)
+  .clip(roi);
+
+
+// ------------------------------------------------------------
+// 12. DISPLAY THEIL–SEN SLOPE
+// Blue = cooling
+// White = near-zero slope
+// Red = warming
+// ------------------------------------------------------------
+
+Map.addLayer(
+  senSlope,
+  {
+    min: -0.2,
+    max: 0.2,
+    palette: ['2166ac', 'f7f7f7', 'b2182b']
+  },
+  'Theil–Sen LST slope (°C/year)'
+);
+
+
+// ------------------------------------------------------------
+// 13. DISPLAY TREND CLASSIFICATION
+// ------------------------------------------------------------
+
+Map.addLayer(
+  trendClass,
+  {
+    min: 0,
+    max: 4,
+    palette: [
+      'bdbdbd', // 0: zero slope
+      '238b45', // 1: significant warming
+      '2166ac', // 2: significant cooling
+      'a1d99b', // 3: non-significant warming
+      '9ecae1'  // 4: non-significant cooling
+    ]
+  },
+  'LST trend classes'
+);
+
+
+// ------------------------------------------------------------
+// 14. DISPLAY SIGNIFICANCE MASK
+// 0 = non-significant; 1 = significant
+// ------------------------------------------------------------
+
+Map.addLayer(
+  significanceMask,
+  {
+    min: 0,
+    max: 1,
+    palette: ['bdbdbd', '238b45']
+  },
+  'MK significance mask',
+  false
+);
+
+
+// ------------------------------------------------------------
+// 15. COMBINE TREND OUTPUTS
+// Convert the final image to Float32 to prevent Long export
+// errors. Class values remain numerically unchanged.
+// ------------------------------------------------------------
+
+var results = senSlope
+  .addBands(mkS)
+  .addBands(mkZ)
+  .addBands(mkP)
+  .addBands(trendClass.toFloat())
+  .addBands(significanceMask.toFloat())
+  .addBands(validYearCount.updateMask(validMask).toFloat())
+  .clip(roi)
+  .toFloat();
+
+print('Combined output band names', results.bandNames());
+
+
+// ------------------------------------------------------------
+// 16. EXPORT COMBINED GEOTIFF
+// ------------------------------------------------------------
+
+Export.image.toDrive({
+  image: results,
+  description: 'MODIS_LST_Trend_Results_2001_2020',
+  folder: 'LST_Trend_Export',
+  fileNamePrefix: 'MODIS_LST_Trend_Results_2001_2020',
+  region: roi,
+  scale: SCALE,
+  crs: EXPORT_CRS,
+  maxPixels: 1e13
+});
+
+
+// ------------------------------------------------------------
+// 17. EXPORT INDIVIDUAL RASTERS
+// Cast every export image to Float32.
+// ------------------------------------------------------------
+
+var rasterOutputs = [
+  {image: senSlope, name: 'LST_Theil_Sen_Slope'},
+  {image: mkS, name: 'LST_MK_S'},
+  {image: mkZ, name: 'LST_MK_Z'},
+  {image: mkP, name: 'LST_MK_p_value'},
+  {image: trendClass, name: 'LST_Trend_Class'},
+  {image: significanceMask, name: 'LST_MK_Significance_Mask'}
+];
+
+rasterOutputs.forEach(function(item) {
+
+  Export.image.toDrive({
+    image: item.image.toFloat(),
+    description: item.name + '_2001_2020',
+    folder: 'LST_Trend_Export',
+    fileNamePrefix: item.name + '_2001_2020',
+    region: roi,
+    scale: SCALE,
+    crs: EXPORT_CRS,
+    maxPixels: 1e13
+  });
+
+});
+
+
+// ------------------------------------------------------------
+// 18. PIXEL COUNT AND PERCENTAGE SUMMARY
+// ------------------------------------------------------------
+
+var pixelBase = ee.Image.constant(1)
+  .rename('pixel')
+  .toFloat()
+  .updateMask(validMask)
+  .clip(roi);
+
+var totalDict = pixelBase.reduceRegion({
+  reducer: ee.Reducer.sum(),
+  geometry: roi,
+  scale: SCALE,
+  crs: EXPORT_CRS,
+  maxPixels: 1e13,
+  tileScale: 4
+});
+
+var totalPixels = ee.Number(totalDict.get('pixel', 0));
+
+var categories = [
+  {code: 0, name: 'Zero_Slope'},
+  {code: 1, name: 'Significant_Warming'},
+  {code: 2, name: 'Significant_Cooling'},
+  {code: 3, name: 'NonSignificant_Warming'},
+  {code: 4, name: 'NonSignificant_Cooling'}
+];
+
+var summaryFeatures = categories.map(function(category) {
+
+  var classPixels = pixelBase.updateMask(
+    trendClass.eq(category.code)
+  );
+
+  var countDict = classPixels.reduceRegion({
+    reducer: ee.Reducer.sum(),
+    geometry: roi,
+    scale: SCALE,
+    crs: EXPORT_CRS,
+    maxPixels: 1e13,
+    tileScale: 4
+  });
+
+  var count = ee.Number(countDict.get('pixel', 0));
+
+  var percentage = ee.Number(
+    ee.Algorithms.If(
+      totalPixels.gt(0),
+      count.divide(totalPixels).multiply(100),
+      0
+    )
+  );
+
+  return ee.Feature(null, {
+    Trend_Code: category.code,
+    Trend_Category: category.name,
+    Pixel_Count: count,
+    Percentage: percentage,
+    Total_Valid_Pixels: totalPixels,
+    Period: '2001-2020',
+    Alpha: ALPHA
+  });
+
+});
+
+var summaryTable = ee.FeatureCollection(summaryFeatures);
+
+print('LST trend summary table', summaryTable);
+
+Export.table.toDrive({
+  collection: summaryTable,
+  description: 'LST_Trend_Summary_2001_2020',
+  folder: 'LST_Trend_Export',
+  fileNamePrefix: 'LST_Trend_Summary_2001_2020',
+  fileFormat: 'CSV'
+});
+
+
+// ------------------------------------------------------------
+// 19. EXPORT ANNUAL LST STACK
+// ------------------------------------------------------------
+
+Export.image.toDrive({
+  image: stackedLST
+    .updateMask(validMask)
+    .clip(roi)
+    .toFloat(),
+  description: 'Annual_MODIS_LST_Stack_2001_2020',
+  folder: 'LST_Trend_Export',
+  fileNamePrefix: 'Annual_MODIS_LST_Stack_2001_2020',
+  region: roi,
+  scale: SCALE,
+  crs: EXPORT_CRS,
+  maxPixels: 1e13
+});
+
+print('Script initialized. Open the Tasks tab to run exports.');
+MNDWI
+
+// ============================================================
+// MNDWI TREND ANALYSIS: SUNDARBANS
+// Period: 2001–2020
+// Sensors: Landsat 5 TM and Landsat 8 OLI
+// MNDWI = (Green - SWIR1) / (Green + SWIR1)
+//
+// Outputs:
+// 1. Annual MNDWI stack
+// 2. Theil–Sen slope
+// 3. Mann–Kendall S statistic
+// 4. Approximate MK Z and p-value
+// 5. Trend classes
+// 6. Significance mask
+// 7. Valid-year count
+// 8. CSV pixel summary
+// 9. GeoTIFF exports
+//
+// Requires an imported study-area geometry named "roi".
+// ============================================================
+
+
+// ------------------------------------------------------------
+// 1. SETTINGS
+// ------------------------------------------------------------
+
+var START_YEAR = 2001;
+var END_YEAR = 2020;
+var ALPHA = 0.05;
+var MIN_OBS = 15;
+var SCALE = 30;
+var EXPORT_CRS = 'EPSG:32645';
+
+Map.centerObject(roi, 8);
+
+
+// ------------------------------------------------------------
+// 2. CLOUD, SHADOW AND SATURATION MASK
+// Landsat Collection 2 Level 2
+// ------------------------------------------------------------
+
+function maskLandsat(image) {
+  var qa = image.select('QA_PIXEL');
+  var saturation = image.select('QA_RADSAT');
+
+  // QA_PIXEL bits:
+  // 0 fill, 1 dilated cloud, 2 cirrus,
+  // 3 cloud, 4 cloud shadow, 5 snow
+  var mask = qa.bitwiseAnd(1 << 0).eq(0)
+    .and(qa.bitwiseAnd(1 << 1).eq(0))
+    .and(qa.bitwiseAnd(1 << 2).eq(0))
+    .and(qa.bitwiseAnd(1 << 3).eq(0))
+    .and(qa.bitwiseAnd(1 << 4).eq(0))
+    .and(qa.bitwiseAnd(1 << 5).eq(0))
+    .and(saturation.eq(0));
+
+  return image.updateMask(mask);
+}
+
+
+// ------------------------------------------------------------
+// 3. LANDSAT 5 MNDWI
+// Green = SR_B2
+// SWIR1 = SR_B5
+// ------------------------------------------------------------
+
+function calculateMNDWI_L5(image) {
+  image = maskLandsat(image);
+
+  var green = image.select('SR_B2')
+    .multiply(0.0000275)
+    .add(-0.2);
+
+  var swir1 = image.select('SR_B5')
+    .multiply(0.0000275)
+    .add(-0.2);
+
+  var mndwi = green.subtract(swir1)
+    .divide(green.add(swir1))
+    .rename('MNDWI');
+
+  // Mask zero/near-zero denominators.
+  mndwi = mndwi.updateMask(
+    green.add(swir1).abs().gt(0.0001)
+  );
+
+  return mndwi
+    .toFloat()
+    .copyProperties(image, ['system:time_start']);
+}
+
+
+// ------------------------------------------------------------
+// 4. LANDSAT 8 MNDWI
+// Green = SR_B3
+// SWIR1 = SR_B6
+// ------------------------------------------------------------
+
+function calculateMNDWI_L8(image) {
+  image = maskLandsat(image);
+
+  var green = image.select('SR_B3')
+    .multiply(0.0000275)
+    .add(-0.2);
+
+  var swir1 = image.select('SR_B6')
+    .multiply(0.0000275)
+    .add(-0.2);
+
+  var mndwi = green.subtract(swir1)
+    .divide(green.add(swir1))
+    .rename('MNDWI');
+
+  mndwi = mndwi.updateMask(
+    green.add(swir1).abs().gt(0.0001)
+  );
+
+  return mndwi
+    .toFloat()
+    .copyProperties(image, ['system:time_start']);
+}
+
+
+// ------------------------------------------------------------
+// 5. LOAD LANDSAT COLLECTIONS
+// ------------------------------------------------------------
+
+var landsat5 = ee.ImageCollection('LANDSAT/LT05/C02/T1_L2')
+  .filterBounds(roi)
+  .filterDate('2001-01-01', '2012-01-01')
+  .map(calculateMNDWI_L5);
+
+var landsat8 = ee.ImageCollection('LANDSAT/LC08/C02/T1_L2')
+  .filterBounds(roi)
+  .filterDate('2013-01-01', '2021-01-01')
+  .map(calculateMNDWI_L8);
+
+var combined = landsat5.merge(landsat8)
+  .sort('system:time_start');
+
+print('Landsat 5 image count', landsat5.size());
+print('Landsat 8 image count', landsat8.size());
+print('Combined image count', combined.size());
+
+
+// ------------------------------------------------------------
+// 6. CREATE ANNUAL MNDWI COMPOSITES
+// Each annual image uses the same band name: MNDWI.
+// Years with no valid images remain masked rather than
+// being assigned artificial values.
+// ------------------------------------------------------------
+
+var years = [];
+var annualImages = [];
+
+for (var year = START_YEAR; year <= END_YEAR; year++) {
+  years.push(year);
+
+  var start = ee.Date.fromYMD(year, 1, 1);
+  var end = start.advance(1, 'year');
+
+  var yearlyCollection = combined.filterDate(start, end);
+
+  var annualImage = yearlyCollection
+    .mean()
+    .rename('MNDWI')
+    .toFloat()
+    .clip(roi)
+    .set('year', year)
+    .set('system:time_start', start.millis());
+
+  annualImages.push(annualImage);
+}
+
+var annualMNDWI = ee.ImageCollection
+  .fromImages(annualImages)
+  .sort('system:time_start');
+
+print('Annual composite count', annualMNDWI.size());
+
+
+// ------------------------------------------------------------
+// 7. VALID-YEAR COUNT AND STACK
+// ------------------------------------------------------------
+
+var validYearCount = annualMNDWI
+  .count()
+  .rename('Valid_Years')
+  .clip(roi);
+
+var validMask = validYearCount.gte(MIN_OBS);
+
+var stackedMNDWI = annualMNDWI.toBands();
+
+var bandNames = years.map(function(year) {
+  return 'MNDWI_' + year;
+});
+
+stackedMNDWI = stackedMNDWI
+  .rename(bandNames)
+  .toFloat();
+
+print('Annual MNDWI band names', stackedMNDWI.bandNames());
+
+Map.addLayer(
+  validYearCount,
+  {
+    min: 0,
+    max: 20,
+    palette: ['8c2d04', 'fecc5c', 'ffffb2', '31a354']
+  },
+  'Valid annual MNDWI observations',
+  false
+);
+
+
+// ------------------------------------------------------------
+// 8. DISPLAY ANNUAL MNDWI FOR 2020
+// ------------------------------------------------------------
+
+Map.addLayer(
+  stackedMNDWI.select('MNDWI_2020').updateMask(validMask),
+  {
+    min: -1,
+    max: 1,
+    palette: ['8c510a', 'f6e8c3', 'f7f7f7', '80cdc1', '01665e']
+  },
+  'Annual MNDWI 2020',
+  false
+);
+
+
+// ------------------------------------------------------------
+// 9. THEIL–SEN SLOPE
+// Units: MNDWI units/year
+//
+// Each pairwise slope is masked wherever either annual
+// composite is unavailable. The median reducer ignores
+// masked pairwise slopes.
+// ------------------------------------------------------------
+
+var pairwiseSlopes = [];
+
+for (var i = 0; i < years.length; i++) {
+  for (var j = i + 1; j < years.length; j++) {
+    var xi = stackedMNDWI.select('MNDWI_' + years[i]);
+    var xj = stackedMNDWI.select('MNDWI_' + years[j]);
+
+    var pairSlope = xj.subtract(xi)
+      .divide(years[j] - years[i])
+      .rename('Pairwise_Slope')
+      .toFloat();
+
+    pairwiseSlopes.push(pairSlope);
+  }
+}
+
+var senSlope = ee.ImageCollection
+  .fromImages(pairwiseSlopes)
+  .median()
+  .rename('Theil_Sen_Slope')
+  .updateMask(validMask)
+  .toFloat()
+  .clip(roi);
+
+
+// ------------------------------------------------------------
+// 10. MANN–KENDALL S STATISTIC
+// S = sum sign(Xj - Xi)
+//
+// Positive S = increasing MNDWI
+// Negative S = decreasing MNDWI
+//
+// Only valid pair comparisons contribute at each pixel.
+// ------------------------------------------------------------
+
+var pairwiseSigns = [];
+
+for (var i = 0; i < years.length; i++) {
+  for (var j = i + 1; j < years.length; j++) {
+    var xi = stackedMNDWI.select('MNDWI_' + years[i]);
+    var xj = stackedMNDWI.select('MNDWI_' + years[j]);
+
+    var difference = xj.subtract(xi);
+
+    var sign = difference.gt(0)
+      .subtract(difference.lt(0))
+      .rename('Sign')
+      .toFloat();
+
+    // Do not unmask missing comparisons to zero.
+    pairwiseSigns.push(sign);
+  }
+}
+
+var mkS = ee.ImageCollection
+  .fromImages(pairwiseSigns)
+  .sum()
+  .rename('MK_S')
+  .updateMask(validMask)
+  .toFloat()
+  .clip(roi);
+
+
+// ------------------------------------------------------------
+// 11. APPROXIMATE MK Z AND P-VALUE
+// ------------------------------------------------------------
+// Approximate variance without tie correction:
+// Var(S) = n(n - 1)(2n + 5) / 18
+//
+// NOTE: Using validYearCount alone does not fully correct
+// the variance for missing years or ties. Validate these
+// significance estimates before publication.
+// ------------------------------------------------------------
+
+var n = validYearCount.toFloat();
+
+var varianceS = n
+  .multiply(n.subtract(1))
+  .multiply(n.multiply(2).add(5))
+  .divide(18);
+
+var zNumerator = ee.Image.constant(0).toFloat()
+  .where(mkS.gt(0), mkS.subtract(1))
+  .where(mkS.lt(0), mkS.add(1));
+
+var mkZ = zNumerator
+  .divide(varianceS.sqrt())
+  .rename('MK_Z')
+  .updateMask(validMask)
+  .toFloat()
+  .clip(roi);
+
+var mkP = ee.Image.constant(1).toFloat()
+  .subtract(mkZ.abs().divide(Math.sqrt(2)).erf())
+  .clamp(0, 1)
+  .rename('MK_p')
+  .updateMask(validMask)
+  .toFloat()
+  .clip(roi);
+
+
+// ------------------------------------------------------------
+// 12. TREND CLASSIFICATION
+// 0 = zero slope
+// 1 = significant increase
+// 2 = significant decrease
+// 3 = non-significant increase
+// 4 = non-significant decrease
+// ------------------------------------------------------------
+
+var trendClass = ee.Image.constant(0)
+  .toByte()
+  .where(senSlope.gt(0).and(mkP.lt(ALPHA)), 1)
+  .where(senSlope.lt(0).and(mkP.lt(ALPHA)), 2)
+  .where(senSlope.gt(0).and(mkP.gte(ALPHA)), 3)
+  .where(senSlope.lt(0).and(mkP.gte(ALPHA)), 4)
+  .rename('Trend_Class')
+  .updateMask(validMask)
+  .clip(roi);
+
+var significanceMask = mkP.lt(ALPHA)
+  .rename('Significant_Trend')
+  .toByte()
+  .updateMask(validMask)
+  .clip(roi);
+
+
+// ------------------------------------------------------------
+// 13. DISPLAY TREND RESULTS
+// ------------------------------------------------------------
+
+Map.addLayer(
+  senSlope,
+  {
+    min: -0.02,
+    max: 0.02,
+    palette: ['2166ac', 'f7f7f7', 'b2182b']
+  },
+  'Theil–Sen MNDWI slope'
+);
+
+Map.addLayer(
+  trendClass,
+  {
+    min: 0,
+    max: 4,
+    palette: [
+      'bdbdbd', // zero slope
+      '238b45', // significant increase
+      '2166ac', // significant decrease
+      'a1d99b', // non-significant increase
+      '9ecae1'  // non-significant decrease
+    ]
+  },
+  'MNDWI trend classes'
+);
+
+Map.addLayer(
+  significanceMask,
+  {
+    min: 0,
+    max: 1,
+    palette: ['bdbdbd', '238b45']
+  },
+  'MNDWI significance mask',
+  false
+);
+
+
+// ------------------------------------------------------------
+// 14. COMBINED OUTPUT
+// Convert all bands to Float32 for export compatibility.
+// ------------------------------------------------------------
+
+var results = senSlope
+  .addBands(mkS)
+  .addBands(mkZ)
+  .addBands(mkP)
+  .addBands(trendClass.toFloat())
+  .addBands(significanceMask.toFloat())
+  .addBands(validYearCount.updateMask(validMask).toFloat())
+  .clip(roi)
+  .toFloat();
+
+
+// ------------------------------------------------------------
+// 15. EXPORT COMBINED GEOTIFF
+// ------------------------------------------------------------
+
+Export.image.toDrive({
+  image: results,
+  description: 'MNDWI_Trend_Results_2001_2020',
+  folder: 'MNDWI_Trend',
+  fileNamePrefix: 'MNDWI_Trend_Results_2001_2020',
+  scale: SCALE,
+  region: roi,
+  crs: EXPORT_CRS,
+  maxPixels: 1e13,
+  fileFormat: 'GeoTIFF'
+});
+
+
+// ------------------------------------------------------------
+// 16. EXPORT INDIVIDUAL TREND RASTERS
+// ------------------------------------------------------------
+
+var rasterOutputs = [
+  {image: senSlope, name: 'MNDWI_Theil_Sen_Slope'},
+  {image: mkS, name: 'MNDWI_MK_S'},
+  {image: mkZ, name: 'MNDWI_MK_Z'},
+  {image: mkP, name: 'MNDWI_MK_p_value'},
+  {image: trendClass, name: 'MNDWI_Trend_Class'},
+  {image: significanceMask, name: 'MNDWI_Significance_Mask'}
+];
+
+rasterOutputs.forEach(function(item) {
+  Export.image.toDrive({
+    image: item.image.toFloat(),
+    description: item.name + '_2001_2020',
+    folder: 'MNDWI_Trend',
+    fileNamePrefix: item.name + '_2001_2020',
+    scale: SCALE,
+    region: roi,
+    crs: EXPORT_CRS,
+    maxPixels: 1e13,
+    fileFormat: 'GeoTIFF'
+  });
+});
+
+
+// ------------------------------------------------------------
+// 17. PIXEL COUNT AND PERCENTAGE SUMMARY
+// ------------------------------------------------------------
+
+var pixelBase = ee.Image.constant(1)
+  .rename('pixel')
+  .toFloat()
+  .updateMask(validMask)
+  .clip(roi);
+
+var totalDict = pixelBase.reduceRegion({
+  reducer: ee.Reducer.sum(),
+  geometry: roi,
+  scale: SCALE,
+  crs: EXPORT_CRS,
+  maxPixels: 1e13,
+  tileScale: 4
+});
+
+var totalPixels = ee.Number(totalDict.get('pixel', 0));
+
+var categories = [
+  {code: 0, name: 'Zero_Slope'},
+  {code: 1, name: 'Significant_Increase'},
+  {code: 2, name: 'Significant_Decrease'},
+  {code: 3, name: 'NonSignificant_Increase'},
+  {code: 4, name: 'NonSignificant_Decrease'}
+];
+
+var summaryFeatures = categories.map(function(category) {
+  var classPixels = pixelBase.updateMask(
+    trendClass.eq(category.code)
+  );
+
+  var countDict = classPixels.reduceRegion({
+    reducer: ee.Reducer.sum(),
+    geometry: roi,
+    scale: SCALE,
+    crs: EXPORT_CRS,
+    maxPixels: 1e13,
+    tileScale: 4
+  });
+
+  var count = ee.Number(countDict.get('pixel', 0));
+
+  var percentage = ee.Number(ee.Algorithms.If(
+    totalPixels.gt(0),
+    count.divide(totalPixels).multiply(100),
+    0
+  ));
+
+  return ee.Feature(null, {
+    Trend_Code: category.code,
+    Trend_Category: category.name,
+    Pixel_Count: count,
+    Percentage: percentage,
+    Total_Valid_Pixels: totalPixels,
+    Period: '2001-2020',
+    Alpha: ALPHA
+  });
+});
+
+var summaryTable = ee.FeatureCollection(summaryFeatures);
+
+print('MNDWI trend summary', summaryTable);
+
+Export.table.toDrive({
+  collection: summaryTable,
+  description: 'MNDWI_Trend_Summary_2001_2020',
+  folder: 'MNDWI_Trend',
+  fileNamePrefix: 'MNDWI_Trend_Summary_2001_2020',
+  fileFormat: 'CSV'
+});
+
+
+// ------------------------------------------------------------
+// 18. EXPORT ANNUAL MNDWI STACK
+// ------------------------------------------------------------
+
+Export.image.toDrive({
+  image: stackedMNDWI
+    .updateMask(validMask)
+    .clip(roi)
+    .toFloat(),
+  description: 'Annual_MNDWI_Stack_2001_2020',
+  folder: 'MNDWI_Trend',
+  fileNamePrefix: 'Annual_MNDWI_Stack_2001_2020',
+  scale: SCALE,
+  region: roi,
+  crs: EXPORT_CRS,
+  maxPixels: 1e13,
+  fileFormat: 'GeoTIFF'
+});
+
+print('MNDWI trend script initialized. Run exports from the Tasks tab.');
+MSAVI
+
+/***************************************************************
+ MSAVI TREND ANALYSIS — SUNDARBANS
+ Period: 2001–2011 and 2013–2020
+ Missing years: 2002 and 2012
+ Native analysis/export scale: 30 m
+
+ Important:
+ - Import your study-area geometry as roi.
+ - Map visualization is deliberately coarsened to 300 m.
+ - Export results at 30 m.
+***************************************************************/
+
+// ============================================================
+// 1. SETTINGS
+// ============================================================
+
+var years = [
+  2001, 2003, 2004, 2005, 2006, 2007,
+  2008, 2009, 2010, 2011,
+  2013, 2014, 2015, 2016, 2017,
+  2018, 2019, 2020
+];
+
+var ALPHA = 0.05;
+var MIN_OBS = 15;
+var EXPORT_SCALE = 30;
+var DISPLAY_SCALE = 300;
+var EXPORT_FOLDER = 'MSAVI_Trend';
+
+Map.centerObject(roi, 8);
+Map.addLayer(roi, {color: 'black'}, 'Study Area', false);
+
+print('Selected years:', years);
+print('Number of years:', years.length);
+
+
+// ============================================================
+// 2. LANDSAT CLOUD MASK
+// ============================================================
+
+function maskLandsat(image) {
+  var qa = image.select('QA_PIXEL');
+  var saturation = image.select('QA_RADSAT');
+
+  var mask = qa.bitwiseAnd(1 << 0).eq(0)
+    .and(qa.bitwiseAnd(1 << 1).eq(0))
+    .and(qa.bitwiseAnd(1 << 2).eq(0))
+    .and(qa.bitwiseAnd(1 << 3).eq(0))
+    .and(qa.bitwiseAnd(1 << 4).eq(0))
+    .and(qa.bitwiseAnd(1 << 5).eq(0))
+    .and(saturation.eq(0));
+
+  return image.updateMask(mask);
+}
+
+
+// ============================================================
+// 3. MSAVI2 FUNCTION
+// ============================================================
+
+function calculateMSAVI(image, nirBand, redBand) {
+  image = maskLandsat(image);
+
+  var nir = image.select(nirBand)
+    .multiply(0.0000275)
+    .add(-0.2);
+
+  var red = image.select(redBand)
+    .multiply(0.0000275)
+    .add(-0.2);
+
+  var discriminant = nir.multiply(2)
+    .add(1)
+    .pow(2)
+    .subtract(nir.subtract(red).multiply(8))
+    .max(0);
+
+  var msavi = nir.multiply(2)
+    .add(1)
+    .subtract(discriminant.sqrt())
+    .divide(2)
+    .rename('MSAVI');
+
+  return msavi
+    .updateMask(msavi.gte(-1).and(msavi.lte(1)))
+    .toFloat()
+    .copyProperties(image, ['system:time_start']);
+}
+
+
+// ============================================================
+// 4. LANDSAT COLLECTIONS
+// ============================================================
+
+var l5 = ee.ImageCollection('LANDSAT/LT05/C02/T1_L2')
+  .filterBounds(roi)
+  .filterDate('2001-01-01', '2012-01-01')
+  .map(function(image) {
+    return calculateMSAVI(image, 'SR_B4', 'SR_B3');
+  });
+
+var l7 = ee.ImageCollection('LANDSAT/LE07/C02/T1_L2')
+  .filterBounds(roi)
+  .filterDate('2001-01-01', '2021-01-01')
+  .map(function(image) {
+    return calculateMSAVI(image, 'SR_B4', 'SR_B3');
+  });
+
+var l8 = ee.ImageCollection('LANDSAT/LC08/C02/T1_L2')
+  .filterBounds(roi)
+  .filterDate('2013-01-01', '2021-01-01')
+  .map(function(image) {
+    return calculateMSAVI(image, 'SR_B5', 'SR_B4');
+  });
+
+var collection = l5.merge(l7).merge(l8);
+
+print('Landsat 5 scenes:', l5.size());
+print('Landsat 7 scenes:', l7.size());
+print('Landsat 8 scenes:', l8.size());
+
+
+// ============================================================
+// 5. ANNUAL MEAN MSAVI
+// ============================================================
+
+var annualImages = years.map(function(year) {
+  var start = ee.Date.fromYMD(year, 1, 1);
+  var end = start.advance(1, 'year');
+
+  var yearlyCollection = collection.filterDate(start, end);
+
+  return yearlyCollection
+    .mean()
+    .rename('MSAVI')
+    .toFloat()
+    .set('year', year)
+    .set('system:time_start', start.millis())
+    .clip(roi);
+});
+
+var annual = ee.ImageCollection.fromImages(annualImages);
+
+print('Annual composite count:', annual.size());
+
+
+// ============================================================
+// 6. VALID ANNUAL OBSERVATION COUNT
+// ============================================================
+
+var validCount = annual.count()
+  .rename('Valid_Years')
+  .clip(roi);
+
+var validMask = validCount.gte(MIN_OBS);
+
+
+// ============================================================
+// 7. THEIL–SEN SLOPE
+// Median of pairwise annual slopes
+// Units: MSAVI units/year
+// ============================================================
+
+var pairwiseSlopes = [];
+
+for (var i = 0; i < years.length - 1; i++) {
+  for (var j = i + 1; j < years.length; j++) {
+
+    var imageI = ee.Image(annualImages[i]);
+    var imageJ = ee.Image(annualImages[j]);
+
+    var slope = imageJ.subtract(imageI)
+      .divide(years[j] - years[i])
+      .rename('Slope')
+      .toFloat();
+
+    pairwiseSlopes.push(slope);
+  }
+}
+
+var senSlope = ee.ImageCollection
+  .fromImages(pairwiseSlopes)
+  .median()
+  .rename('Theil_Sen_Slope')
+  .updateMask(validMask)
+  .clip(roi);
+
+
+// ============================================================
+// 8. MANN–KENDALL S STATISTIC
+// ============================================================
+
+var pairwiseSigns = [];
+
+for (var a = 0; a < years.length - 1; a++) {
+  for (var b = a + 1; b < years.length; b++) {
+
+    var imageA = ee.Image(annualImages[a]);
+    var imageB = ee.Image(annualImages[b]);
+
+    var difference = imageB.subtract(imageA);
+
+    var signImage = difference.gt(0)
+      .subtract(difference.lt(0))
+      .rename('Sign')
+      .toFloat();
+
+    pairwiseSigns.push(signImage);
+  }
+}
+
+var mkS = ee.ImageCollection
+  .fromImages(pairwiseSigns)
+  .sum()
+  .rename('MK_S')
+  .updateMask(validMask)
+  .clip(roi);
+
+
+// ============================================================
+// 9. MANN–KENDALL Z STATISTIC
+// Approximate variance without tie correction
+// ============================================================
+
+var n = validCount.toFloat();
+
+var varianceS = n
+  .multiply(n.subtract(1))
+  .multiply(n.multiply(2).add(5))
+  .divide(18);
+
+var numerator = ee.Image.constant(0)
+  .where(mkS.gt(0), mkS.subtract(1))
+  .where(mkS.lt(0), mkS.add(1));
+
+var mkZ = numerator
+  .divide(varianceS.sqrt())
+  .rename('MK_Z')
+  .updateMask(validMask)
+  .clip(roi);
+
+
+// ============================================================
+// 10. MANN–KENDALL TWO-TAILED P-VALUE
+// Normal approximation
+// ============================================================
+
+var mkP = ee.Image.constant(1)
+  .subtract(
+    mkZ.abs().divide(Math.sqrt(2)).erf()
+  )
+  .clamp(0, 1)
+  .rename('MK_p')
+  .updateMask(validMask)
+  .clip(roi);
+
+
+// ============================================================
+// 11. TREND CLASSIFICATION
+//
+// 0 = zero slope
+// 1 = significant increase
+// 2 = significant decrease
+// 3 = non-significant increase
+// 4 = non-significant decrease
+// ============================================================
+
+var trendClass = ee.Image.constant(0)
+  .where(senSlope.gt(0).and(mkP.lt(ALPHA)), 1)
+  .where(senSlope.lt(0).and(mkP.lt(ALPHA)), 2)
+  .where(senSlope.gt(0).and(mkP.gte(ALPHA)), 3)
+  .where(senSlope.lt(0).and(mkP.gte(ALPHA)), 4)
+  .rename('Trend_Class')
+  .updateMask(validMask)
+  .clip(roi)
+  .toByte();
+
+var significance = mkP.lt(ALPHA)
+  .rename('Significance')
+  .updateMask(validMask)
+  .clip(roi)
+  .toByte();
+
+
+// ============================================================
+// 12. COARSER MAP VISUALIZATION
+// Reduces the rendering load on interactive map tiles.
+// Does not change the native-resolution export settings.
+// ============================================================
+
+var displaySlope = senSlope
+  .reproject({
+    crs: 'EPSG:32645',
+    scale: DISPLAY_SCALE
+  });
+
+var displayClass = trendClass
+  .reproject({
+    crs: 'EPSG:32645',
+    scale: DISPLAY_SCALE
+  });
+
+var displayP = mkP
+  .reproject({
+    crs: 'EPSG:32645',
+    scale: DISPLAY_SCALE
+  });
+
+Map.addLayer(
+  displaySlope,
+  {
+    min: -0.02,
+    max: 0.02,
+    palette: ['2166ac', 'ffffff', '238b45']
+  },
+  'MSAVI Theil-Sen Slope (300 m display)'
+);
+
+Map.addLayer(
+  displayClass,
+  {
+    min: 0,
+    max: 4,
+    palette: [
+      'bdbdbd',
+      '238b45',
+      '2166ac',
+      'a1d99b',
+      '9ecae1'
+    ]
+  },
+  'MSAVI Trend Classes (300 m display)',
+  false
+);
+
+Map.addLayer(
+  displayP,
+  {
+    min: 0,
+    max: 0.1,
+    palette: ['238b45', 'ffffbf', 'b2182b']
+  },
+  'MK p-value (300 m display)',
+  false
+);
+
+
+// ============================================================
+// 13. EXPORT RESULTS AT 30 METRES
+// ============================================================
+
+function exportResult(image, name) {
+  Export.image.toDrive({
+    image: image,
+    description: name + '_2001_2020',
+    folder: EXPORT_FOLDER,
+    fileNamePrefix: name + '_2001_2020',
+    region: roi,
+    scale: EXPORT_SCALE,
+    crs: 'EPSG:32645',
+    maxPixels: 1e13,
+    fileFormat: 'GeoTIFF'
+  });
+}
+
+exportResult(senSlope, 'MSAVI_Theil_Sen_Slope');
+exportResult(mkS, 'MSAVI_MK_S');
+exportResult(mkZ, 'MSAVI_MK_Z');
+exportResult(mkP, 'MSAVI_MK_p_value');
+exportResult(trendClass, 'MSAVI_Trend_Class');
+exportResult(significance, 'MSAVI_Significance_Mask');
+exportResult(validCount, 'MSAVI_Valid_Year_Count');
+
+print('Trend analysis prepared.');
+print('Run the export tasks from the Tasks tab.');
+NDVI
+
+/***************************************************************
+ MODIS NDVI TREND ANALYSIS — SUNDARBANS
+ Period: 2001–2020
+ Dataset: MODIS/061/MOD13Q1
+ Spatial resolution: 250 m
+ Temporal resolution: 16 days
+
+ Outputs:
+ 1. Annual NDVI stack
+ 2. Theil–Sen slope (NDVI units/year)
+ 3. Mann–Kendall S statistic
+ 4. Mann–Kendall Z statistic
+ 5. Mann–Kendall p-value
+ 6. Trend classification
+ 7. Significance mask
+ 8. Valid annual observation count
+ 9. Combined trend result
+****************************************************************/
+
+// ============================================================
+// 1. STUDY AREA
+// ============================================================
+// Import your Sundarbans boundary as "roi" in the Imports panel.
+
+Map.centerObject(roi, 8);
+Map.addLayer(roi, {color: 'black'}, 'Study Area', false);
+
+// ============================================================
+// 2. PARAMETERS
+// ============================================================
+
+var START_YEAR = 2001;
+var END_YEAR = 2020;
+var ALPHA = 0.05;
+var MIN_OBS = 15;
+
+var SCALE = 250;
+var CRS = 'EPSG:32645';
+var EXPORT_FOLDER = 'NDVI_Trend';
+
+var years = ee.List.sequence(START_YEAR, END_YEAR);
+
+// ============================================================
+// 3. MODIS NDVI DATA AND QUALITY MASK
+// ============================================================
+
+var modis = ee.ImageCollection('MODIS/061/MOD13Q1')
+  .filterBounds(roi)
+  .filterDate(
+    ee.Date.fromYMD(START_YEAR, 1, 1),
+    ee.Date.fromYMD(END_YEAR + 1, 1, 1)
+  )
+  .select(['NDVI', 'SummaryQA']);
+
+print('MODIS image collection:', modis);
+print('Number of MODIS images:', modis.size());
+
+// Retain good-quality NDVI observations.
+// SummaryQA = 0 indicates good quality.
+
+function prepareNDVI(image) {
+  var qa = image.select('SummaryQA');
+  var ndvi = image.select('NDVI')
+    .multiply(0.0001)
+    .rename('NDVI');
+
+  return ndvi
+    .updateMask(qa.eq(0))
+    .copyProperties(image, ['system:time_start']);
+}
+
+var ndviCollection = modis.map(prepareNDVI);
+
+// ============================================================
+// 4. ANNUAL MEAN NDVI COMPOSITES
+// ============================================================
+
+var annualImages = years.map(function(year) {
+  year = ee.Number(year);
+
+  var start = ee.Date.fromYMD(year, 1, 1);
+  var end = start.advance(1, 'year');
+
+  var yearly = ndviCollection.filterDate(start, end);
+
+  var annualNDVI = yearly.mean()
+    .rename('NDVI')
+    .clip(roi)
+    .set('year', year)
+    .set('system:time_start', start.millis())
+    .set('image_count', yearly.size());
+
+  return annualNDVI;
+});
+
+var annualCollection = ee.ImageCollection.fromImages(annualImages);
+
+print('Annual NDVI collection:', annualCollection);
+print('Annual composite count:', annualCollection.size());
+
+// Count valid annual observations at each pixel.
+
+var validYearCount = annualCollection
+  .count()
+  .rename('Valid_Year_Count')
+  .clip(roi);
+
+Map.addLayer(
+  validYearCount,
+  {
+    min: 0,
+    max: 20,
+    palette: ['white', 'yellow', 'green', 'darkgreen']
+  },
+  'Valid Annual Observations',
+  false
+);
+
+// ============================================================
+// 5. CREATE ANNUAL NDVI STACK
+// ============================================================
+
+var annualImageList = annualCollection.toList(20);
+
+var bandNames = years.map(function(year) {
+  return ee.String('NDVI_').cat(ee.Number(year).format('%d'));
+});
+
+var annualStack = ee.ImageCollection.fromImages(
+  years.map(function(year) {
+    year = ee.Number(year);
+
+    var image = ee.Image(
+      annualCollection
+        .filter(ee.Filter.eq('year', year))
+        .first()
+    );
+
+    return image.rename(
+      ee.String('NDVI_').cat(year.format('%d'))
+    );
+  })
+).toBands();
+
+// Remove the automatic numeric prefixes from toBands().
+annualStack = annualStack.rename(bandNames).clip(roi);
+
+print('Annual NDVI stack:', annualStack);
+print('Annual NDVI band names:', annualStack.bandNames());
+
+// ============================================================
+// 6. THEIL–SEN SLOPE AND MANN–KENDALL S STATISTIC
+// ============================================================
+
+// Theil–Sen slope:
+// Median of all pairwise annual NDVI slopes.
+//
+// Mann–Kendall S:
+// Sum of signs of all pairwise differences.
+
+var slopeImages = [];
+var signImages = [];
+
+for (var i = 0; i < 20; i++) {
+
+  var imageI = ee.Image(annualImageList.get(i))
+    .select('NDVI');
+
+  var yearI = START_YEAR + i;
+
+  for (var j = i + 1; j < 20; j++) {
+
+    var imageJ = ee.Image(annualImageList.get(j))
+      .select('NDVI');
+
+    var yearJ = START_YEAR + j;
+
+    var difference = imageJ.subtract(imageI);
+
+    // Pairwise slope in NDVI units per year.
+    var pairSlope = difference
+      .divide(yearJ - yearI)
+      .rename('Slope');
+
+    slopeImages.push(pairSlope);
+
+    // Sign of pairwise difference:
+    // +1 = increase; -1 = decrease; 0 = equal.
+    var pairSign = difference.gt(0)
+      .subtract(difference.lt(0))
+      .rename('Sign');
+
+    signImages.push(pairSign);
+  }
+}
+
+var slopeCollection = ee.ImageCollection.fromImages(slopeImages);
+var signCollection = ee.ImageCollection.fromImages(signImages);
+
+// Theil–Sen median slope.
+var senSlope = slopeCollection
+  .median()
+  .rename('Theil_Sen_Slope');
+
+// Mann–Kendall S statistic.
+var mkS = signCollection
+  .sum()
+  .rename('MK_S');
+
+// Apply the minimum-observation mask.
+var adequateData = validYearCount.gte(MIN_OBS);
+
+senSlope = senSlope.updateMask(adequateData);
+mkS = mkS.updateMask(adequateData);
+
+// ============================================================
+// 7. MANN–KENDALL Z STATISTIC
+// ============================================================
+
+// No-ties variance approximation:
+// Var(S) = n(n-1)(2n+5)/18
+//
+// This version uses the valid annual observation count
+// at each pixel. It does not correct for tied observations.
+
+var n = validYearCount.toFloat();
+
+var varianceS = n
+  .multiply(n.subtract(1))
+  .multiply(n.multiply(2).add(5))
+  .divide(18);
+
+var standardDeviationS = varianceS.sqrt();
+
+// Continuity-corrected Z statistic.
+var mkZ = ee.Image(0)
+  .where(mkS.gt(0), mkS.subtract(1))
+  .where(mkS.lt(0), mkS.add(1))
+  .divide(standardDeviationS)
+  .rename('MK_Z')
+  .updateMask(adequateData);
+
+// ============================================================
+// 8. APPROXIMATE TWO-TAILED MANN–KENDALL P-VALUE
+// ============================================================
+
+// Approximation of the standard normal upper-tail probability.
+// p = 2 * P(Z > |observed Z|)
+
+var absZ = mkZ.abs();
+
+var t = ee.Image(1).divide(
+  ee.Image(1).add(absZ.multiply(0.2316419))
+);
+
+var t2 = t.pow(2);
+var t3 = t.pow(3);
+var t4 = t.pow(4);
+var t5 = t.pow(5);
+
+var polynomial = t.multiply(0.319381530)
+  .subtract(t2.multiply(0.356563782))
+  .add(t3.multiply(1.781477937))
+  .subtract(t4.multiply(1.821255978))
+  .add(t5.multiply(1.330274429));
+
+var normalDensity = absZ.pow(2)
+  .multiply(-0.5)
+  .exp()
+  .multiply(0.3989422804);
+
+var mkP = normalDensity
+  .multiply(polynomial)
+  .multiply(2)
+  .clamp(0, 1)
+  .rename('MK_p_value')
+  .updateMask(adequateData);
+
+// ============================================================
+// 9. TREND CLASSIFICATION
+// ============================================================
+
+// Classes:
+// 0 = Zero slope
+// 1 = Significant increase (slope > 0 and p < 0.05)
+// 2 = Significant decrease (slope < 0 and p < 0.05)
+// 3 = Non-significant increase
+// 4 = Non-significant decrease
+
+var trendClass = ee.Image(0)
+  .where(senSlope.gt(0).and(mkP.lt(ALPHA)), 1)
+  .where(senSlope.lt(0).and(mkP.lt(ALPHA)), 2)
+  .where(senSlope.gt(0).and(mkP.gte(ALPHA)), 3)
+  .where(senSlope.lt(0).and(mkP.gte(ALPHA)), 4)
+  .rename('Trend_Class')
+  .updateMask(adequateData)
+  .clip(roi);
+
+// Significance mask:
+// 1 = statistically significant
+// 0 = not statistically significant
+
+var significanceMask = mkP.lt(ALPHA)
+  .rename('Significance_Mask')
+  .updateMask(adequateData)
+  .clip(roi);
+
+// ============================================================
+// 10. COMBINED TREND RESULT
+// ============================================================
+
+var combinedResult = senSlope
+  .addBands(mkS)
+  .addBands(mkZ)
+  .addBands(mkP)
+  .addBands(trendClass)
+  .addBands(significanceMask)
+  .addBands(validYearCount)
+  .clip(roi);
+
+print('Combined NDVI trend result:', combinedResult);
+print('Combined output bands:', combinedResult.bandNames());
+
+// ============================================================
+// 11. MAP VISUALIZATION
+// ============================================================
+
+Map.addLayer(
+  senSlope,
+  {
+    min: -0.02,
+    max: 0.02,
+    palette: ['brown', 'white', 'darkgreen']
+  },
+  'NDVI Theil–Sen Slope'
+);
+
+Map.addLayer(
+  mkS,
+  {
+    min: -190,
+    max: 190,
+    palette: ['brown', 'white', 'darkgreen']
+  },
+  'Mann–Kendall S Statistic',
+  false
+);
+
+Map.addLayer(
+  mkZ,
+  {
+    min: -3,
+    max: 3,
+    palette: ['brown', 'white', 'darkgreen']
+  },
+  'Mann–Kendall Z Statistic',
+  false
+);
+
+Map.addLayer(
+  mkP,
+  {
+    min: 0,
+    max: 0.1,
+    palette: ['darkgreen', 'yellow', 'red']
+  },
+  'Mann–Kendall P Value',
+  false
+);
+
+Map.addLayer(
+  trendClass,
+  {
+    min: 0,
+    max: 4,
+    palette: [
+      '808080', // 0: zero slope
+      '006400', // 1: significant increase
+      '8B0000', // 2: significant decrease
+      '90EE90', // 3: non-significant increase
+      'FFA07A'  // 4: non-significant decrease
+    ]
+  },
+  'NDVI Trend Classes'
+);
+
+Map.addLayer(
+  significanceMask,
+  {
+    min: 0,
+    max: 1,
+    palette: ['white', 'black']
+  },
+  'Trend Significance Mask',
+  false
+);
+
+// ============================================================
+// 12. TREND CLASS SUMMARY
+// ============================================================
+
+var classHistogram = trendClass.reduceRegion({
+  reducer: ee.Reducer.frequencyHistogram(),
+  geometry: roi,
+  scale: SCALE,
+  maxPixels: 1e13,
+  tileScale: 4
+});
+
+print('Trend class pixel frequency:', classHistogram);
+
+// ============================================================
+// 13. EXPORT ANNUAL NDVI STACK
+// ============================================================
+
+Export.image.toDrive({
+  image: annualStack,
+  description: 'NDVI_Annual_Stack_2001_2020',
+  folder: EXPORT_FOLDER,
+  fileNamePrefix: 'NDVI_Annual_Stack_2001_2020',
+  region: roi,
+  scale: SCALE,
+  crs: CRS,
+  maxPixels: 1e13
+});
+
+// ============================================================
+// 14. EXPORT THEIL–SEN SLOPE
+// ============================================================
+
+Export.image.toDrive({
+  image: senSlope,
+  description: 'NDVI_Theil_Sen_Slope_2001_2020',
+  folder: EXPORT_FOLDER,
+  fileNamePrefix: 'NDVI_Theil_Sen_Slope_2001_2020',
+  region: roi,
+  scale: SCALE,
+  crs: CRS,
+  maxPixels: 1e13
+});
+
+// ============================================================
+// 15. EXPORT MANN–KENDALL S
+// ============================================================
+
+Export.image.toDrive({
+  image: mkS,
+  description: 'NDVI_MK_S_2001_2020',
+  folder: EXPORT_FOLDER,
+  fileNamePrefix: 'NDVI_MK_S_2001_2020',
+  region: roi,
+  scale: SCALE,
+  crs: CRS,
+  maxPixels: 1e13
+});
+
+// ============================================================
+// 16. EXPORT MANN–KENDALL Z
+// ============================================================
+
+Export.image.toDrive({
+  image: mkZ,
+  description: 'NDVI_MK_Z_2001_2020',
+  folder: EXPORT_FOLDER,
+  fileNamePrefix: 'NDVI_MK_Z_2001_2020',
+  region: roi,
+  scale: SCALE,
+  crs: CRS,
+  maxPixels: 1e13
+});
+
+// ============================================================
+// 17. EXPORT MANN–KENDALL P VALUE
+// ============================================================
+
+Export.image.toDrive({
+  image: mkP,
+  description: 'NDVI_MK_p_value_2001_2020',
+  folder: EXPORT_FOLDER,
+  fileNamePrefix: 'NDVI_MK_p_value_2001_2020',
+  region: roi,
+  scale: SCALE,
+  crs: CRS,
+  maxPixels: 1e13
+});
+
+// ============================================================
+// 18. EXPORT TREND CLASS
+// ============================================================
+
+Export.image.toDrive({
+  image: trendClass,
+  description: 'NDVI_Trend_Class_2001_2020',
+  folder: EXPORT_FOLDER,
+  fileNamePrefix: 'NDVI_Trend_Class_2001_2020',
+  region: roi,
+  scale: SCALE,
+  crs: CRS,
+  maxPixels: 1e13
+});
+
+// ============================================================
+// 19. EXPORT SIGNIFICANCE MASK
+// ============================================================
+
+Export.image.toDrive({
+  image: significanceMask,
+  description: 'NDVI_Significance_Mask_2001_2020',
+  folder: EXPORT_FOLDER,
+  fileNamePrefix: 'NDVI_Significance_Mask_2001_2020',
+  region: roi,
+  scale: SCALE,
+  crs: CRS,
+  maxPixels: 1e13
+});
+
+// ============================================================
+// 20. EXPORT VALID YEAR COUNT
+// ============================================================
+
+Export.image.toDrive({
+  image: validYearCount,
+  description: 'NDVI_Valid_Year_Count_2001_2020',
+  folder: EXPORT_FOLDER,
+  fileNamePrefix: 'NDVI_Valid_Year_Count_2001_2020',
+  region: roi,
+  scale: SCALE,
+  crs: CRS,
+  maxPixels: 1e13
+});
+
+// ============================================================
+// 21. EXPORT COMBINED RESULTS
+// ============================================================
+
+Export.image.toDrive({
+  image: combinedResult,
+  description: 'NDVI_Trend_Results_2001_2020',
+  folder: EXPORT_FOLDER,
+  fileNamePrefix: 'NDVI_Trend_Results_2001_2020',
+  region: roi,
+  scale: SCALE,
+  crs: CRS,
+  maxPixels: 1e13
+});
+
+// ============================================================
+// END OF SCRIPT
+// ============================================================
+PTC
+
+/***************************************************************
+ MODIS PERCENT TREE COVER (PTC) TREND ANALYSIS
+ Period: 2001–2020
+ Dataset: MODIS/061/MOD44B
+ Nominal resolution: 250 m
+
+ Outputs:
+ 1. Annual mean PTC
+ 2. Theil-Sen slope
+ 3. Mann-Kendall S
+ 4. Mann-Kendall Z
+ 5. Mann-Kendall p-value
+ 6. Trend classification
+ 7. Significance mask
+ 8. Valid-year count
+
+ Required imported geometry: roi
+***************************************************************/
+
+// ============================================================
+// 1. SETTINGS
+// ============================================================
+
+var START_YEAR = 2001;
+var END_YEAR = 2020;
+
+var ALPHA = 0.05;
+var MIN_OBS = 15;
+
+var SCALE = 250;
+var DISPLAY_SCALE = 500;
+var EXPORT_FOLDER = 'PTC_Trend';
+
+var years = [];
+for (var yr = START_YEAR; yr <= END_YEAR; yr++) {
+  years.push(yr);
+}
+
+var nYears = years.length;
+
+Map.centerObject(roi, 6);
+Map.addLayer(roi, {color: 'black'}, 'Study Area', false);
+
+print('Analysis period:', START_YEAR + '–' + END_YEAR);
+print('Number of years:', nYears);
+
+
+// ============================================================
+// 2. LOAD MODIS PERCENT TREE COVER
+// ============================================================
+
+// MOD44B is an annual vegetation structure product.
+// Percent_Tree_Cover represents percentage tree cover.
+
+var modisPTC = ee.ImageCollection('MODIS/061/MOD44B')
+  .filterBounds(roi)
+  .filterDate('2001-01-01', '2021-01-01')
+  .select('Percent_Tree_Cover');
+
+print('MODIS PTC image collection:', modisPTC);
+print('Available PTC images:', modisPTC.size());
+
+
+// ============================================================
+// 3. CREATE ANNUAL PTC IMAGES
+// ============================================================
+
+var annualImages = years.map(function(year) {
+
+  var start = ee.Date.fromYMD(year, 1, 1);
+  var end = start.advance(1, 'year');
+
+  var annualImage = modisPTC
+    .filterDate(start, end)
+    .mean()
+    .rename('PTC')
+    .toFloat()
+    .clip(roi);
+
+  return annualImage
+    .set('year', year)
+    .set('system:time_start', start.millis());
+});
+
+var annualPTC = ee.ImageCollection.fromImages(annualImages);
+
+print('Annual PTC collection:', annualPTC);
+
+
+// ============================================================
+// 4. VALID YEAR COUNT
+// ============================================================
+
+var validCount = annualPTC
+  .count()
+  .rename('Valid_Years')
+  .clip(roi);
+
+var validMask = validCount.gte(MIN_OBS);
+
+Map.addLayer(
+  validCount.reproject({
+    crs: 'EPSG:4326',
+    scale: DISPLAY_SCALE
+  }),
+  {
+    min: MIN_OBS,
+    max: nYears,
+    palette: ['yellow', 'lightgreen', 'darkgreen']
+  },
+  'Valid Annual Observations',
+  false
+);
+
+
+// ============================================================
+// 5. THEIL-SEN SLOPE
+// Median of pairwise slopes
+// Units: percentage points of tree cover per year
+// ============================================================
+
+var pairwiseSlopes = [];
+
+for (var i = 0; i < nYears - 1; i++) {
+  for (var j = i + 1; j < nYears; j++) {
+
+    var imageI = ee.Image(annualImages[i]).select('PTC');
+    var imageJ = ee.Image(annualImages[j]).select('PTC');
+
+    var slope = imageJ.subtract(imageI)
+      .divide(years[j] - years[i])
+      .rename('Slope')
+      .toFloat();
+
+    pairwiseSlopes.push(slope);
+  }
+}
+
+var senSlope = ee.ImageCollection
+  .fromImages(pairwiseSlopes)
+  .median()
+  .rename('Theil_Sen_Slope')
+  .updateMask(validMask)
+  .clip(roi);
+
+
+// ============================================================
+// 6. MANN-KENDALL S STATISTIC
+// S = sum of sign(PTCj - PTCi)
+// ============================================================
+
+var pairwiseSigns = [];
+
+for (var a = 0; a < nYears - 1; a++) {
+  for (var b = a + 1; b < nYears; b++) {
+
+    var imgA = ee.Image(annualImages[a]).select('PTC');
+    var imgB = ee.Image(annualImages[b]).select('PTC');
+
+    var difference = imgB.subtract(imgA);
+
+    var signImage = difference.gt(0)
+      .subtract(difference.lt(0))
+      .rename('Sign')
+      .toFloat();
+
+    pairwiseSigns.push(signImage);
+  }
+}
+
+var mkS = ee.ImageCollection
+  .fromImages(pairwiseSigns)
+  .sum()
+  .rename('MK_S')
+  .updateMask(validMask)
+  .clip(roi);
+
+
+// ============================================================
+// 7. MANN-KENDALL Z STATISTIC
+// Approximate variance without tie correction
+// ============================================================
+
+var n = validCount.toFloat();
+
+var varianceS = n
+  .multiply(n.subtract(1))
+  .multiply(n.multiply(2).add(5))
+  .divide(18);
+
+var zNumerator = ee.Image.constant(0)
+  .where(mkS.gt(0), mkS.subtract(1))
+  .where(mkS.lt(0), mkS.add(1));
+
+var mkZ = zNumerator
+  .divide(varianceS.sqrt())
+  .rename('MK_Z')
+  .updateMask(validMask)
+  .clip(roi);
+
+
+// ============================================================
+// 8. MANN-KENDALL TWO-TAILED P-VALUE
+// Normal approximation
+// ============================================================
+
+var mkP = ee.Image.constant(1)
+  .subtract(
+    mkZ.abs().divide(Math.sqrt(2)).erf()
+  )
+  .clamp(0, 1)
+  .rename('MK_p_value')
+  .updateMask(validMask)
+  .clip(roi);
+
+
+// ============================================================
+// 9. TREND CLASSIFICATION
+//
+// 0 = zero slope
+// 1 = significant increase
+// 2 = significant decrease
+// 3 = non-significant increase
+// 4 = non-significant decrease
+// ============================================================
+
+var trendClass = ee.Image.constant(0)
+  .where(senSlope.gt(0).and(mkP.lt(ALPHA)), 1)
+  .where(senSlope.lt(0).and(mkP.lt(ALPHA)), 2)
+  .where(senSlope.gt(0).and(mkP.gte(ALPHA)), 3)
+  .where(senSlope.lt(0).and(mkP.gte(ALPHA)), 4)
+  .rename('Trend_Class')
+  .updateMask(validMask)
+  .clip(roi)
+  .toByte();
+
+var significanceMask = mkP.lt(ALPHA)
+  .rename('Significance_Mask')
+  .updateMask(validMask)
+  .clip(roi)
+  .toByte();
+
+
+// ============================================================
+// 10. MAP DISPLAY
+// Coarser visualization scale reduces tile-rendering load.
+// ============================================================
+
+Map.addLayer(
+  senSlope.reproject({
+    crs: 'EPSG:4326',
+    scale: DISPLAY_SCALE
+  }),
+  {
+    min: -1,
+    max: 1,
+    palette: ['blue', 'white', 'green']
+  },
+  'PTC Theil-Sen Slope'
+);
+
+Map.addLayer(
+  trendClass.reproject({
+    crs: 'EPSG:4326',
+    scale: DISPLAY_SCALE
+  }),
+  {
+    min: 0,
+    max: 4,
+    palette: [
+      'bdbdbd',
+      '238b45',
+      '2166ac',
+      'a1d99b',
+      '9ecae1'
+    ]
+  },
+  'PTC Trend Classes',
+  false
+);
+
+Map.addLayer(
+  mkP.reproject({
+    crs: 'EPSG:4326',
+    scale: DISPLAY_SCALE
+  }),
+  {
+    min: 0,
+    max: 0.1,
+    palette: ['green', 'yellow', 'red']
+  },
+  'PTC Mann-Kendall p-value',
+  false
+);
+
+Map.addLayer(
+  significanceMask.reproject({
+    crs: 'EPSG:4326',
+    scale: DISPLAY_SCALE
+  }),
+  {
+    min: 0,
+    max: 1,
+    palette: ['white', 'black']
+  },
+  'PTC Significance Mask',
+  false
+);
+
+
+// ============================================================
+// 11. EXPORT FUNCTION
+// ============================================================
+
+function exportResult(image, name) {
+
+  Export.image.toDrive({
+    image: image,
+    description: name + '_2001_2020',
+    folder: EXPORT_FOLDER,
+    fileNamePrefix: name + '_2001_2020',
+    region: roi,
+    scale: SCALE,
+    maxPixels: 1e13,
+    fileFormat: 'GeoTIFF'
+  });
+}
+
+
+// ============================================================
+// 12. EXPORT INDIVIDUAL RESULTS
+// ============================================================
+
+exportResult(senSlope, 'PTC_Theil_Sen_Slope');
+exportResult(mkS, 'PTC_MK_S');
+exportResult(mkZ, 'PTC_MK_Z');
+exportResult(mkP, 'PTC_MK_p_value');
+exportResult(trendClass, 'PTC_Trend_Class');
+exportResult(significanceMask, 'PTC_Significance_Mask');
+exportResult(validCount, 'PTC_Valid_Year_Count');
+
+print('PTC trend analysis prepared.');
+print('Open the Tasks tab and run the exports.');
