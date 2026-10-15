@@ -59,12 +59,12 @@ years.getInfo().forEach(function(year) {
   });
 });
 Code for EVI
-// Load the MODIS NDVI dataset
+// Load the MODIS EVI dataset
 var dataset = ee.ImageCollection('MODIS/061/MOD13Q1')
                   .select('EVI');
 
-// Function to calculate annual mean NDVI and apply scale factor
-var calculateAnnualNDVI = function(year) {
+// Function to calculate annual mean EVI and apply scale factor
+var calculateAnnualEVI = function(year) {
   var startDate = ee.Date.fromYMD(year, 1, 1);
   var endDate = startDate.advance(1, 'year');
   
@@ -81,9 +81,9 @@ var calculateAnnualNDVI = function(year) {
 // List of years for analysis
 var years = ee.List.sequence(2001, 2020);
 
-// Generate annual NDVI images
+// Generate annual EVI images
 var annualNDVICollection = ee.ImageCollection.fromImages(
-  years.map(calculateAnnualNDVI)
+  years.map(calculateAnnualEVI)
 );
 
 // Visualization parameters
@@ -97,14 +97,14 @@ var ndviVis = {
   ]
 };
 
-// Display the NDVI of one example year (e.g., 2020) on the map
-var exampleYear = annualNDVICollection.filter(ee.Filter.eq('year', 2020)).first();
+// Display the EVI of one example year (e.g., 2020) on the map
+var exampleYear = annualEVICollection.filter(ee.Filter.eq('year', 2020)).first();
 Map.centerObject(roi, 8); // Center map on ROI
 Map.addLayer(exampleYear, ndviVis, 'EVI (2020)');
 
 // Export each annual NDVI raster to Google Drive
 years.getInfo().forEach(function(year) {
-  var image = annualNDVICollection.filter(ee.Filter.eq('year', year)).first();
+  var image = annualEVICollection.filter(ee.Filter.eq('year', year)).first();
   
   Export.image.toDrive({
     image: image,
