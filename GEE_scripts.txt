@@ -293,135 +293,91 @@ years.getInfo().forEach(function(year) {
   });
 });
 Code for MNDWI
-// Define scaling function for Landsat SR data
-var applyScalingFactors = function(image) {
-  return image.multiply(0.0000275).add(-0.2); // Apply scaling
-};
+
+ // ============================================================
+ // MNDWI ANALYSIS USING LANDSAT 5 TM
+ // Period: 2001–2012
+ // Dataset: LANDSAT/LT05/C02/T1_L2
+ // Green: SR_B2 | SWIR1: SR_B5
+ // ============================================================
 
 // Function to calculate MNDWI
-var calculateNDMI = function(image) {
-  var scaledImage = image.select(['SR_B2', 'SR_B5']).multiply(0.0000275).add(-0.2); // Apply scaling directly
-  var ndmi = scaledImage.normalizedDifference(['SR_B2', 'SR_B5']).rename('MNDWI'); // Compute NDMI
-  return image.addBands(ndmi); // Add NDMI as a new band
+var calculateMNDWI = function(image) {
+  var scaledImage = image
+    .select(['SR_B2', 'SR_B5'])
+    .multiply(0.0000275)
+    .add(-0.2);
+
+  var mndwi = scaledImage
+    .normalizedDifference(['SR_B2', 'SR_B5'])
+    .rename('MNDWI');
+
+  return image.addBands(mndwi);
 };
 
-// Load Landsat 5 SR data and calculate NDMI for 2001 to 2012
-var landsat5 = ee.ImageCollection("LANDSAT/LT05/C02/T1_L2")
+// Load Landsat 5 Surface Reflectance data
+var landsat5 = ee.ImageCollection('LANDSAT/LT05/C02/T1_L2')
   .filterBounds(roi)
-  .filterDate('2001-01-01', '2012-12-31')
+  .filterDate('2001-01-01', '2013-01-01')
   .filter(ee.Filter.lt('CLOUD_COVER', 10))
-  .map(calculateNDMI); // Map the function to compute NDMI
+  .map(calculateMNDWI);
 
-// Compute annual mean MNDWI
-var years = ee.List.sequence(2001, 2012);
-var annualNDMI = ee.ImageCollection.fromImages(
-  years.map(function(year) {
+// Define years
+var years5 = ee.List.sequence(2001, 2012);
+
+// Generate annual mean MNDWI
+var annualMNDWI5 = ee.ImageCollection.fromImages(
+  years5.map(function(year) {
+    year = ee.Number(year);
     var startDate = ee.Date.fromYMD(year, 1, 1);
     var endDate = startDate.advance(1, 'year');
-    
-    var annualMean = landsat5.filterDate(startDate, endDate)
-                             .select('MNDWI')
-                             .mean()
-                             .set('year', year)
-                             .clip(roi);
-    
-    return annualMean.set('system:time_start', startDate.millis());
+
+    var annualMean = landsat5
+      .filterDate(startDate, endDate)
+      .select('MNDWI')
+      .mean()
+      .clip(roi);
+
+    return annualMean
+      .set('year', year)
+      .set('system:time_start', startDate.millis());
   })
 );
 
-// Print and visualize NDMI for a sample year (e.g., 2005)
-print('Annual NDMI Collection (2001-2012):', annualNDMI);
+print('Annual Landsat 5 MNDWI (2001–2012)', annualMNDWI5);
 
-var ndmiVis = {
-  min: -1.0,
-  max: 1.0,
-  palette: ['blue', 'white', 'green'],
+// Visualization
+var mndwiVis = {
+  min: -1,
+  max: 1,
+  palette: ['brown', 'white', 'blue']
 };
 
 Map.centerObject(roi, 8);
-Map.addLayer(annualNDMI.filter(ee.Filter.eq('year', 2005)).first(), ndmiVis, 'NDMI 2005');
 
-// Export each year's NDMI raster to Google Drive
-years.getInfo().forEach(function(year) {
-  var image = annualNDMI.filter(ee.Filter.eq('year', year)).first();
+Map.addLayer(
+  annualMNDWI5.filter(ee.Filter.eq('year', 2005)).first(),
+  mndwiVis,
+  'MNDWI 2005'
+);
+
+// Export annual MNDWI images
+years5.getInfo().forEach(function(year) {
+  var image = annualMNDWI5
+    .filter(ee.Filter.eq('year', year))
+    .first();
+
   Export.image.toDrive({
     image: image,
     description: 'Landsat5_Yearly_MNDWI_' + year,
     folder: 'MNDWI_Annual_Rasters',
-    scale: 250,
+    scale: 30,
     region: roi,
     maxPixels: 1e13,
     fileFormat: 'GeoTIFF'
   });
 });
 
-
-
-
-//NDMI for landsat 8
-
-
-// Define scaling function for Landsat SR data
-var applyScalingFactors = function(image) {
-  return image.multiply(0.0000275).add(-0.2); // Apply scaling
-};
-
-// Function to calculate MNDWI
-var calculateNDMI = function(image) {
-  var scaledImage = image.select(['SR_B3', 'SR_B6']).multiply(0.0000275).add(-0.2); // Apply scaling directly
-  var ndmi = scaledImage.normalizedDifference(['SR_B3', 'SR_B6']).rename('MNDWI'); // Compute NDMI
-  return image.addBands(ndmi); // Add NDMI as a new band
-};
-
-// Load Landsat 8 SR data and calculate NDMI for 2013 to 2022
-var landsat8 = ee.ImageCollection("LANDSAT/LC08/C02/T1_L2")
-  .filterBounds(roi)
-  .filterDate('2013-01-01', '2022-12-31')
-  .filter(ee.Filter.lt('CLOUD_COVER', 10))
-  .map(calculateNDMI); // Map the function to compute NDMI
-
-// Compute annual mean NDMI
-var years = ee.List.sequence(2013, 2022);
-var annualNDMI = ee.ImageCollection.fromImages(
-  years.map(function(year) {
-    var startDate = ee.Date.fromYMD(year, 1, 1);
-    var endDate = startDate.advance(1, 'year');
-    
-    var annualMean = landsat8.filterDate(startDate, endDate)
-                             .select('MNDWI')
-                             .mean()
-                             .set('year', year)
-                             .clip(roi);
-    
-    return annualMean.set('system:time_start', startDate.millis());
-  })
-);
-
-// Print and visualize NDMI for a sample year (e.g., 2015)
-print('Annual NDMI Collection (2013-2022):', annualNDMI);
-
-var ndmiVis = {
-  min: -1.0,
-  max: 1.0,
-  palette: ['blue', 'white', 'green'],
-};
-
-Map.centerObject(roi, 8);
-Map.addLayer(annualNDMI.filter(ee.Filter.eq('year', 2015)).first(), ndmiVis, 'NDMI 2015');
-
-// Export each year's NDMI raster to Google Drive
-years.getInfo().forEach(function(year) {
-  var image = annualNDMI.filter(ee.Filter.eq('year', year)).first();
-  Export.image.toDrive({
-    image: image,
-    description: 'Landsat8_Yearly_MNDWI_' + year,
-    folder: 'MNDWI_Annual_Rasters',
-    scale: 250,
-    region: roi,
-    maxPixels: 1e13,
-    fileFormat: 'GeoTIFF'
-  });
-});
 Code for MSAVI
 // ============================================================
 // MSAVI ANNUAL ANALYSIS: SUNDARBANS
