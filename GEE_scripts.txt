@@ -1,4 +1,4 @@
-i# Sundarbans
+Ii# Sundarbans
 CODE for annual AET:
 // Load TerraClimate dataset
 var dataset = ee.ImageCollection('IDAHO_EPSCOR/TERRACLIMATE')
@@ -82,7 +82,7 @@ var calculateAnnualEVI = function(year) {
 var years = ee.List.sequence(2001, 2020);
 
 // Generate annual EVI images
-var annualNDVICollection = ee.ImageCollection.fromImages(
+var annualEVICollection = ee.ImageCollection.fromImages(
   years.map(calculateAnnualEVI)
 );
 
@@ -102,7 +102,7 @@ var exampleYear = annualEVICollection.filter(ee.Filter.eq('year', 2020)).first()
 Map.centerObject(roi, 8); // Center map on ROI
 Map.addLayer(exampleYear, ndviVis, 'EVI (2020)');
 
-// Export each annual NDVI raster to Google Drive
+// Export each annual EVI raster to Google Drive
 years.getInfo().forEach(function(year) {
   var image = annualEVICollection.filter(ee.Filter.eq('year', year)).first();
   
